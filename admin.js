@@ -243,8 +243,16 @@
         btnEl.innerHTML = `<span>Sending email... ⏳</span>`;
       }
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
       try {
-        const res = await fetch(`${getApiBaseUrl()}/api/auth/send-reset-code`, { method: "POST" });
+        const res = await fetch(`${getApiBaseUrl()}/api/auth/send-reset-code`, {
+          method: "POST",
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
         const data = await res.json();
 
         if (res.ok && data.success) {
@@ -253,11 +261,15 @@
           if (resetForm) resetForm.style.display = "block";
           if (codeInput) codeInput.focus();
         } else {
-          showResetMsg(data.message || "Failed to send code. Please try again.");
+          showResetMsg(data.message || "Failed to send code. Please try again.", true);
         }
       } catch (err) {
-        // Server not reachable
-        showResetMsg("⚠️ The backend server is offline! Please start it by running 'npm start' in your terminal and open http://localhost:3000/admin.html.", true);
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          showResetMsg("⏳ The server is taking longer than usual (the cloud server may be waking up from sleep). Please click again in a few seconds.", true);
+        } else {
+          showResetMsg("⚠️ Could not connect to the authentication server. Please wait a few seconds and try again.", true);
+        }
       } finally {
         if (btnEl) {
           btnEl.disabled = false;
@@ -365,6 +377,9 @@
 
         if (targetId === "tabManage") {
           renderManageTable();
+        }
+        if (targetId === "tabCategories") {
+          renderCategoriesTable();
         }
         if (targetId === "tabReviews") {
           renderAdminReviews();
@@ -476,12 +491,16 @@
       // Generate ID
       const prodId = editingProductId || ("custom-" + name.toLowerCase().replace(/[^a-z0-9]/g, "-") + "-" + Date.now().toString().slice(-4));
 
+      const categoryLabel = (typeof getCategoryLabel === "function") 
+        ? getCategoryLabel(category) 
+        : (CATEGORY_LABELS[category] || "Agbo & Tonics");
+
       const newProduct = {
         id: prodId,
         name: name,
-        subtitle: subtitle || `${CATEGORY_LABELS[category] || 'Ancestral'} Herbal Remedy`,
+        subtitle: subtitle || `${categoryLabel} Herbal Remedy`,
         category: category,
-        categoryLabel: CATEGORY_LABELS[category] || "Agbo & Tonics",
+        categoryLabel: categoryLabel,
         price: price,
         originalPrice: originalPrice,
         rating: 5.0,
@@ -550,10 +569,15 @@
     const totalEl = document.getElementById("statTotalProducts");
     const customEl = document.getElementById("statCustomProducts");
     const badgeEl = document.getElementById("tabCountBadge");
+    const statCategories = document.getElementById("statTotalCategories");
+    const tabCatBadge = document.getElementById("tabCategoriesBadge");
+    const totalCategories = typeof getStoreCategories === "function" ? getStoreCategories(false).length : 5;
 
     if (totalEl) totalEl.textContent = products.length;
     if (customEl) customEl.textContent = customCount;
     if (badgeEl) badgeEl.textContent = products.length;
+    if (statCategories) statCategories.textContent = totalCategories;
+    if (tabCatBadge) tabCatBadge.textContent = totalCategories;
   }
 
   // --- MANAGE TABLE ---
@@ -792,8 +816,11 @@
 
   // --- LOAD DASHBOARD ---
   function loadDashboard() {
+    populateCategorySelect();
     updateStats();
     renderManageTable();
+    renderCategoriesTable();
+    syncServerCategories();
     getAdminReviews().then(reviews => updateReviewsStats(reviews.length));
   }
 
@@ -954,13 +981,306 @@
     }
   }
 
+  // --- CATEGORIES CONTROLLER & HANDLERS ---
+  function populateCategorySelect(selectedId) {
+    const select = document.getElementById("prodCategory");
+    if (!select) return;
+
+    const categories = typeof getStoreCategories === "function" ? getStoreCategories(false) : [];
+    const prevVal = selectedId || select.value;
+
+    select.innerHTML = categories.map(cat => `
+      <option value="${cat.id}">
+        ${cat.icon ? cat.icon + ' ' : ''}${cat.label}${cat.desc ? ' — ' + cat.desc : ''}
+      </option>
+    `).join("");
+
+    if (prevVal && categories.some(c => c.id === prevVal)) {
+      select.value = prevVal;
+    } else if (categories[0]) {
+      select.value = categories[0].id;
+    }
+  }
+
+  function renderCategoriesTable() {
+    const tbody = document.getElementById("categoriesTableBody");
+    const countEl = document.getElementById("catTableCount");
+    const tabBadge = document.getElementById("tabCategoriesBadge");
+    const statCategories = document.getElementById("statTotalCategories");
+    if (!tbody) return;
+
+    const categories = typeof getStoreCategories === "function" ? getStoreCategories(false) : [];
+    const products = typeof getStoreProducts === "function" ? getStoreProducts() : PRODUCTS_DATA;
+
+    if (countEl) countEl.textContent = categories.length;
+    if (tabBadge) tabBadge.textContent = categories.length;
+    if (statCategories) statCategories.textContent = categories.length;
+
+    // Count products per category
+    const catCounts = {};
+    products.forEach(p => {
+      if (p.category) {
+        catCounts[p.category] = (catCounts[p.category] || 0) + 1;
+      }
+    });
+
+    if (categories.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+            No categories defined yet. Use the form above to add your first category!
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = categories.map(cat => {
+      const prodCount = catCounts[cat.id] || 0;
+      const isCustom = cat.isCustom || !cat.isDefault;
+      const badge = isCustom
+        ? `<span class="category-badge-chip custom">✨ Custom</span>`
+        : `<span class="category-badge-chip">🌱 Default</span>`;
+
+      return `
+        <tr data-cat-id="${cat.id}">
+          <td style="text-align: center; font-size: 1.5rem; line-height: 1;">
+            ${cat.icon || '🌿'}
+          </td>
+          <td>
+            <div style="font-weight: 700; color: var(--deep-forest); font-size: 0.95rem;">${cat.label}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">id: ${cat.id}</div>
+          </td>
+          <td style="color: var(--text-secondary); font-size: 0.85rem; max-width: 280px;">
+            ${cat.desc || '—'}
+          </td>
+          <td>
+            <span style="font-weight: 700; color: var(--primary-green); background: rgba(39, 174, 96, 0.08); padding: 0.2rem 0.6rem; border-radius: var(--radius-full); font-size: 0.8rem;">
+              ${prodCount} remed${prodCount === 1 ? 'y' : 'ies'}
+            </span>
+          </td>
+          <td>
+            ${badge}
+          </td>
+          <td style="text-align: right; white-space: nowrap;">
+            <a href="shop.html?category=${cat.id}" target="_blank" class="btn-action-view" title="View in Shop">
+              👁️ Shop
+            </a>
+            <button type="button" class="btn-action-del btn-del-category" data-id="${cat.id}" data-name="${cat.label}" data-count="${prodCount}" style="margin-left: 0.35rem;" title="Delete category">
+              🗑️ Delete
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    // Wire delete buttons
+    tbody.querySelectorAll(".btn-del-category").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        const name = btn.dataset.name;
+        const count = Number(btn.dataset.count || 0);
+        handleDeleteCategory(id, name, count);
+      });
+    });
+  }
+
+  async function handleDeleteCategory(catId, catName, prodCount) {
+    let warningText = `Are you sure you want to remove the category '${catName}'?`;
+    if (prodCount > 0) {
+      warningText += `\n\n⚠️ NOTE: There are currently ${prodCount} herbal remedy/remedies assigned to this category in your shop.`;
+    }
+
+    const confirmed = window.confirm(warningText);
+    if (!confirmed) return;
+
+    if (typeof deleteStoreCategory === "function") {
+      deleteStoreCategory(catId);
+    }
+
+    try {
+      await fetch(`${getApiBaseUrl()}/api/categories/${catId}`, { method: "DELETE" });
+    } catch (e) {}
+
+    showAdminToast(`Category '${catName}' removed.`, "🗑️");
+    renderCategoriesTable();
+    populateCategorySelect();
+    updateStats();
+  }
+
+  function initCategoryManagement() {
+    const addCatForm = document.getElementById("addCategoryForm");
+    const catIconInput = document.getElementById("newCatIcon");
+    const emojiPicker = document.getElementById("catEmojiPicker");
+    const resetCatsBtn = document.getElementById("resetCategoriesBtn");
+
+    if (emojiPicker && catIconInput) {
+      emojiPicker.querySelectorAll(".emoji-pick-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          catIconInput.value = btn.dataset.emoji || "🌿";
+          emojiPicker.querySelectorAll(".emoji-pick-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+        });
+      });
+    }
+
+    if (addCatForm) {
+      addCatForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const nameInput = document.getElementById("newCatName");
+        const descInput = document.getElementById("newCatDesc");
+        const name = nameInput.value.trim();
+        const icon = (catIconInput ? catIconInput.value.trim() : "") || "🌿";
+        const desc = descInput ? descInput.value.trim() : "";
+
+        if (!name) return;
+
+        const newCat = typeof saveStoreCategory === "function"
+          ? saveStoreCategory({ label: name, icon, desc })
+          : null;
+
+        if (newCat) {
+          try {
+            await fetch(`${getApiBaseUrl()}/api/categories`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(newCat)
+            });
+          } catch (networkErr) {}
+
+          showAdminToast(`✨ Category '${name}' created! Active across Shop & Home.`, "🏷️");
+          addCatForm.reset();
+          if (catIconInput) catIconInput.value = "🌿";
+          renderCategoriesTable();
+          populateCategorySelect(newCat.id);
+          updateStats();
+        }
+      });
+    }
+
+    if (resetCatsBtn) {
+      resetCatsBtn.addEventListener("click", () => {
+        const confirmed = window.confirm("⚠️ Restore factory default categories? Any custom categories you created will be reset.");
+        if (confirmed) {
+          if (typeof resetStoreCategories === "function") {
+            resetStoreCategories();
+          }
+          showAdminToast("Categories restored to default! 🔄", "✓");
+          renderCategoriesTable();
+          populateCategorySelect();
+          updateStats();
+        }
+      });
+    }
+  }
+
+  function initQuickCategoryModal() {
+    const openBtn = document.getElementById("quickAddCatModalBtn");
+    const modal = document.getElementById("quickCategoryModal");
+    const closeBtn = document.getElementById("closeQuickCatModalBtn");
+    const cancelBtn = document.getElementById("cancelQuickCatBtn");
+    const form = document.getElementById("quickCategoryForm");
+    const iconInput = document.getElementById("quickCatIcon");
+    const emojiPicker = document.getElementById("quickCatEmojiPicker");
+
+    if (!modal) return;
+
+    const closeModal = () => {
+      modal.style.display = "none";
+      if (form) form.reset();
+      if (iconInput) iconInput.value = "🌿";
+    };
+
+    if (openBtn) {
+      openBtn.addEventListener("click", () => {
+        modal.style.display = "flex";
+        const nameInput = document.getElementById("quickCatName");
+        if (nameInput) setTimeout(() => nameInput.focus(), 50);
+      });
+    }
+
+    if (closeBtn) closeBtn.addEventListener("click", closeModal);
+    if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+
+    if (emojiPicker && iconInput) {
+      emojiPicker.querySelectorAll(".emoji-pick-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          iconInput.value = btn.dataset.emoji || "🌿";
+        });
+      });
+    }
+
+    if (form) {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("quickCatName").value.trim();
+        const icon = (iconInput ? iconInput.value.trim() : "") || "🌿";
+        const desc = document.getElementById("quickCatDesc").value.trim();
+
+        if (!name) return;
+
+        const newCat = typeof saveStoreCategory === "function"
+          ? saveStoreCategory({ label: name, icon, desc })
+          : null;
+
+        if (newCat) {
+          try {
+            await fetch(`${getApiBaseUrl()}/api/categories`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(newCat)
+            });
+          } catch (networkErr) {}
+
+          showAdminToast(`✨ Category '${name}' created and selected!`, "🏷️");
+          closeModal();
+          populateCategorySelect(newCat.id);
+          renderCategoriesTable();
+          updateStats();
+        }
+      });
+    }
+  }
+
+  async function syncServerCategories() {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/categories`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.categories) && data.categories.length > 0) {
+          const localSaved = localStorage.getItem("quadace_custom_categories");
+          let localCustom = localSaved ? JSON.parse(localSaved) : [];
+          if (!Array.isArray(localCustom)) localCustom = [];
+
+          let changed = false;
+          data.categories.forEach(serverCat => {
+            if (!localCustom.some(c => c.id === serverCat.id)) {
+              localCustom.push(serverCat);
+              changed = true;
+            }
+          });
+
+          if (changed) {
+            localStorage.setItem("quadace_custom_categories", JSON.stringify(localCustom));
+            renderCategoriesTable();
+            populateCategorySelect();
+            updateStats();
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
   // --- INITIALIZATION ---
   function initAdmin() {
     initLoginForm();
     initResetModal();
     initTabs();
     initImageHandlers();
+    populateCategorySelect();
     initProductForm();
+    initCategoryManagement();
+    initQuickCategoryModal();
     initChangePasscode();
     initBackupAndReset();
     checkAuth();

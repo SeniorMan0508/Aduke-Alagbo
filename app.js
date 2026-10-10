@@ -322,7 +322,7 @@
       createdReview = {
         id: `local-rev-${Date.now()}`,
         name: reviewPayload.name,
-        location: reviewPayload.location || "Lagos, Nigeria",
+        location: reviewPayload.location || "Abeokuta, Nigeria",
         rating: reviewPayload.rating || 5,
         remedy: reviewPayload.remedy || "Authentic Herbal Remedy",
         comment: reviewPayload.comment,
@@ -430,7 +430,7 @@
         ? order.items[0].name
         : "Quad-Ace Herbs Traditional Formulation";
 
-      let location = "Lagos, Nigeria";
+      let location = "Abeokuta, Nigeria";
       if (cust.city && cust.state) {
         location = `${cust.city}, ${cust.state}`;
       } else if (cust.city || cust.state) {
@@ -556,9 +556,13 @@
     const pillsContainer = document.getElementById("categoryPills");
     if (!pillsContainer) return;
 
-    pillsContainer.innerHTML = CATEGORIES.map(cat => `
+    const categories = typeof getStoreCategories === "function" 
+      ? getStoreCategories(true) 
+      : (typeof CATEGORIES !== "undefined" ? CATEGORIES : []);
+
+    pillsContainer.innerHTML = categories.map(cat => `
       <button class="pill-btn ${cat.id === state.activeCategory ? 'active' : ''}" data-category="${cat.id}">
-        <span>${cat.icon}</span>
+        <span>${cat.icon || '🌱'}</span>
         <span>${cat.label}</span>
       </button>
     `).join("");
@@ -604,58 +608,161 @@
     return list;
   }
 
-  // --- RENDER PRODUCTS GRID ---
+  // Helper to render an individual product card
+  function renderProductCardHTML(product) {
+    return `
+      <div class="product-card" data-id="${product.id}">
+        <div class="product-thumb-container">
+          ${product.badge ? `<span class="product-badge ${product.badgeType || 'standard'}">${product.badge}</span>` : ''}
+          <img src="${product.image}" alt="${product.name}" loading="lazy" onerror="this.src='images/agbo-jedi.jpg'">
+          <button class="quick-view-overlay-btn" onclick="window.app.openQuickView('${product.id}')">
+            🔍 Quick Details
+          </button>
+        </div>
+
+        <div class="product-card-body">
+          <div class="product-meta-row">
+            <span class="product-category-tag">${product.categoryLabel || (typeof getCategoryLabel === 'function' ? getCategoryLabel(product.category) : product.category)}</span>
+            <span class="product-rating">★ ${(product.rating || 5).toFixed(1)} (${product.reviewsCount || 100})</span>
+          </div>
+
+          <h3 class="product-title">${product.name}</h3>
+          <p class="product-desc">${product.shortDesc}</p>
+
+          <div class="product-card-footer">
+            <div class="product-price-stack">
+              <span class="current-price">${formatMoney(product.price)}</span>
+              ${product.originalPrice ? `<span class="original-price">${formatMoney(product.originalPrice)}</span>` : ''}
+            </div>
+            <button class="add-to-cart-btn" onclick="window.app.addToCart('${product.id}')">
+              <span>+ Add</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // --- RENDER PRODUCTS GRID (CURATED CATEGORIES: LATEST 3 PRODUCTS EACH) ---
   function renderProducts() {
-    const grid = document.getElementById("productsGrid");
-    if (!grid) return;
+    const container = document.getElementById("productsGrid");
+    if (!container) return;
 
-    const products = getFilteredProducts();
+    let allProducts = typeof getStoreProducts === "function" ? getStoreProducts() : [...PRODUCTS_DATA];
 
-    if (products.length === 0) {
-      grid.innerHTML = `
-        <div style="grid-column: 1 / -1; text-align: center; padding: 4rem 1rem; color: var(--text-secondary);">
-          <div style="font-size: 3rem; margin-bottom: 1rem;">🌿</div>
-          <h3 style="font-family: var(--font-heading); color: var(--deep-forest); margin-bottom: 0.5rem;">No remedies matched your search</h3>
-          <p>Try searching with another keyword or explore our full herbal catalog.</p>
-          <button class="btn-primary" style="margin-top: 1.5rem;" onclick="window.app.resetFilters()">View All Herbs</button>
+    // Case A: User is actively searching
+    if (state.activeSearch.trim()) {
+      const q = state.activeSearch.toLowerCase().trim();
+      let matched = allProducts.filter(p => 
+        p.name.toLowerCase().includes(q) ||
+        (p.subtitle && p.subtitle.toLowerCase().includes(q)) ||
+        p.shortDesc.toLowerCase().includes(q) ||
+        p.categoryLabel.toLowerCase().includes(q) ||
+        (p.healthGoals && p.healthGoals.some(g => g.toLowerCase().includes(q)))
+      );
+
+      if (state.activeSort === "price-low") matched.sort((a, b) => a.price - b.price);
+      else if (state.activeSort === "price-high") matched.sort((a, b) => b.price - a.price);
+      else if (state.activeSort === "rating") matched.sort((a, b) => (b.rating || 5) - (a.rating || 5));
+
+      if (matched.length === 0) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 4rem 1rem; color: var(--text-secondary);">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🌿</div>
+            <h3 style="font-family: var(--font-heading); color: var(--deep-forest); margin-bottom: 0.5rem;">No remedies matched '${state.activeSearch}'</h3>
+            <p>Try searching with another keyword or explore our full herbal catalog in the shop.</p>
+            <button class="btn-primary" style="margin-top: 1.5rem;" onclick="window.app.resetFilters()">View All Categories</button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+          <div style="font-size: 1.05rem; color: var(--deep-forest); font-weight: 600;">
+            Found ${matched.length} remedy result${matched.length === 1 ? '' : 's'} for <strong>"${state.activeSearch}"</strong>:
+          </div>
+          <button type="button" class="btn-secondary" style="font-size: 0.82rem; padding: 0.35rem 0.85rem;" onclick="window.app.resetFilters()">
+            ✕ Clear Search
+          </button>
+        </div>
+        <div class="products-grid">
+          ${matched.map(renderProductCardHTML).join("")}
+        </div>
+        <div style="text-align: center; margin-top: 3rem;">
+          <a href="shop.html" class="home-category-view-more">
+            <span>Explore All Remedies in Full Shop Catalog →</span>
+          </a>
         </div>
       `;
       return;
     }
 
-    grid.innerHTML = products.map(product => {
-      return `
-        <div class="product-card" data-id="${product.id}">
-          <div class="product-thumb-container">
-            ${product.badge ? `<span class="product-badge ${product.badgeType || 'standard'}">${product.badge}</span>` : ''}
-            <img src="${product.image}" alt="${product.name}" loading="lazy">
-            <button class="quick-view-overlay-btn" onclick="window.app.openQuickView('${product.id}')">
-              🔍 Quick Details
-            </button>
+    // Case B: Category-by-Category Showcase (Latest 3 remedies per category)
+    const allCategories = typeof getStoreCategories === "function" ? getStoreCategories(false) : [];
+
+    // Filter which categories to show: all, or specific pill selected
+    const categoriesToShow = (state.activeCategory === "all")
+      ? allCategories
+      : allCategories.filter(c => c.id === state.activeCategory);
+
+    const categoryBlocks = [];
+
+    categoriesToShow.forEach(cat => {
+      let catProducts = allProducts.filter(p => p.category === cat.id);
+      if (catProducts.length === 0) return; // Skip empty categories
+
+      // Apply sort if selected
+      if (state.activeSort === "price-low") catProducts.sort((a, b) => a.price - b.price);
+      else if (state.activeSort === "price-high") catProducts.sort((a, b) => b.price - a.price);
+      else if (state.activeSort === "rating") catProducts.sort((a, b) => (b.rating || 5) - (a.rating || 5));
+
+      const totalCount = catProducts.length;
+      // Strictly latest 3 products uploaded!
+      const latest3 = catProducts.slice(0, 3);
+
+      categoryBlocks.push(`
+        <div class="home-category-block" data-category="${cat.id}">
+          <div class="home-category-header">
+            <div class="home-category-info">
+              <span class="home-category-icon">${cat.icon || '🌿'}</span>
+              <div>
+                <h3 class="home-category-title">${cat.label}</h3>
+                ${cat.desc ? `<p class="home-category-desc">${cat.desc}</p>` : ''}
+              </div>
+            </div>
+            <a href="shop.html?category=${cat.id}" class="home-category-link" title="Explore all ${cat.label} in Shop">
+              <span>View All ${cat.label} (${totalCount})</span>
+              <span class="arrow">→</span>
+            </a>
           </div>
 
-          <div class="product-card-body">
-            <div class="product-meta-row">
-              <span class="product-category-tag">${product.categoryLabel}</span>
-              <span class="product-rating">★ ${product.rating.toFixed(1)} (${product.reviewsCount})</span>
-            </div>
+          <div class="products-grid">
+            ${latest3.map(renderProductCardHTML).join("")}
+          </div>
 
-            <h3 class="product-title">${product.name}</h3>
-            <p class="product-desc">${product.shortDesc}</p>
-
-            <div class="product-card-footer">
-              <div class="product-price-stack">
-                <span class="current-price">${formatMoney(product.price)}</span>
-                ${product.originalPrice ? `<span class="original-price">${formatMoney(product.originalPrice)}</span>` : ''}
-              </div>
-              <button class="add-to-cart-btn" onclick="window.app.addToCart('${product.id}')">
-                <span>+ Add</span>
-              </button>
-            </div>
+          <div class="home-category-footer">
+            <a href="shop.html?category=${cat.id}" class="home-category-view-more">
+              <span>View More ${cat.label} in Shop (${totalCount} Available) →</span>
+            </a>
           </div>
         </div>
+      `);
+    });
+
+    if (categoryBlocks.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 4rem 1rem; color: var(--text-secondary);">
+          <div style="font-size: 3rem; margin-bottom: 1rem;">🌿</div>
+          <h3 style="font-family: var(--font-heading); color: var(--deep-forest); margin-bottom: 0.5rem;">No remedies in this category yet</h3>
+          <p>Explore our full catalog on the Shop page.</p>
+          <a href="shop.html" class="btn-primary" style="display: inline-flex; margin-top: 1.5rem;">Visit Shop Catalog</a>
+        </div>
       `;
-    }).join("");
+      return;
+    }
+
+    container.innerHTML = categoryBlocks.join("");
   }
 
   // --- CART MANAGEMENT ---
@@ -800,12 +907,12 @@
     if (progressFill && freeShippingText) {
       if (subtotal >= threshold) {
         progressFill.style.width = "100%";
-        freeShippingText.innerHTML = `🎉 <strong>Congratulations!</strong> You qualified for FREE Lagos delivery!`;
+        freeShippingText.innerHTML = `🎉 <strong>Congratulations!</strong> You qualified for FREE Abeokuta delivery!`;
       } else {
         const remaining = threshold - subtotal;
         const pct = Math.min(100, Math.round((subtotal / threshold) * 100));
         progressFill.style.width = `${pct}%`;
-        freeShippingText.innerHTML = `Add <strong>${formatMoney(remaining)}</strong> more for FREE Lagos Delivery!`;
+        freeShippingText.innerHTML = `Add <strong>${formatMoney(remaining)}</strong> more for FREE Abeokuta Delivery!`;
       }
     }
   }
@@ -860,7 +967,7 @@
 
     document.getElementById("qvImage").src = product.image;
     document.getElementById("qvImage").alt = product.name;
-    document.getElementById("qvCategory").textContent = product.categoryLabel;
+    document.getElementById("qvCategory").textContent = product.categoryLabel || (typeof getCategoryLabel === 'function' ? getCategoryLabel(product.category) : product.category);
     document.getElementById("qvTitle").textContent = product.name;
     document.getElementById("qvSubtitle").textContent = product.subtitle;
     document.getElementById("qvPrice").textContent = formatMoney(product.price);
@@ -1815,6 +1922,19 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Qua
     window.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "A" || e.key === "a")) {
         window.location.href = "admin.html";
+      }
+    });
+
+    // Real-time synchronization for products & categories added in Admin
+    window.addEventListener("storage", (e) => {
+      if (
+        e.key === "quadace_custom_products" ||
+        e.key === "quadace_deleted_products" ||
+        e.key === "quadace_custom_categories" ||
+        e.key === "quadace_deleted_categories"
+      ) {
+        renderCategories();
+        renderProducts();
       }
     });
   });

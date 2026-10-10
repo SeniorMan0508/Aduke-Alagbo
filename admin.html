@@ -299,6 +299,42 @@
       padding: 1.5rem;
       text-align: center;
     }
+
+    .emoji-pick-btn {
+      background: #ffffff;
+      border: 1px solid rgba(24, 66, 46, 0.2);
+      border-radius: var(--radius-sm);
+      padding: 0.35rem 0.55rem;
+      font-size: 1.15rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: all var(--transition-fast);
+    }
+
+    .emoji-pick-btn:hover,
+    .emoji-pick-btn.active {
+      background: rgba(39, 174, 96, 0.15);
+      border-color: var(--primary-green);
+      transform: scale(1.18);
+    }
+
+    .category-badge-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.76rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--radius-full);
+      background: #f1f5f9;
+      color: #334155;
+    }
+
+    .category-badge-chip.custom {
+      background: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+    }
   </style>
 </head>
 <body class="admin-body">
@@ -392,6 +428,49 @@
     </div>
   </div>
 
+  <!-- QUICK CREATE CATEGORY MODAL -->
+  <div class="admin-gatekeeper-overlay" id="quickCategoryModal" style="display: none;">
+    <div class="admin-gate-card" style="max-width: 480px; text-align: left;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
+        <h3 style="color: var(--deep-forest); margin: 0; font-size: 1.25rem;">🏷️ Create New Category</h3>
+        <button type="button" id="closeQuickCatModalBtn" style="background: #e2e8f0; border: none; width: 30px; height: 30px; border-radius: 50%; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.2rem; line-height: 1.45;">
+        Add a category right now. It will appear on your Shop page sidebar, Home page filter pills, and be pre-selected in your product form!
+      </p>
+      <form id="quickCategoryForm" onsubmit="return false;">
+        <div class="form-group" style="margin-bottom: 0.85rem;">
+          <label class="form-label" for="quickCatName">Category Name *</label>
+          <input type="text" id="quickCatName" class="form-input" placeholder="e.g. Skin & Hair Elixirs, Fertility Teas" required>
+        </div>
+        <div class="form-group" style="margin-bottom: 0.85rem;">
+          <label class="form-label" for="quickCatIcon">Icon / Emoji</label>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <input type="text" id="quickCatIcon" class="form-input" value="🌿" style="width: 70px; text-align: center; font-size: 1.25rem;" maxlength="4">
+            <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;" id="quickCatEmojiPicker">
+              <button type="button" class="emoji-pick-btn" data-emoji="🌿">🌿</button>
+              <button type="button" class="emoji-pick-btn" data-emoji="🫖">🫖</button>
+              <button type="button" class="emoji-pick-btn" data-emoji="🍵">🍵</button>
+              <button type="button" class="emoji-pick-btn" data-emoji="🍯">🍯</button>
+              <button type="button" class="emoji-pick-btn" data-emoji="🌸">🌸</button>
+              <button type="button" class="emoji-pick-btn" data-emoji="⚡">⚡</button>
+              <button type="button" class="emoji-pick-btn" data-emoji="🍃">🍃</button>
+              <button type="button" class="emoji-pick-btn" data-emoji="💆‍♀️">💆‍♀️</button>
+            </div>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+          <label class="form-label" for="quickCatDesc">Short Description (Optional)</label>
+          <input type="text" id="quickCatDesc" class="form-input" placeholder="e.g. Botanical teas for reproductive vitality and cycle balance">
+        </div>
+        <div style="display: flex; gap: 0.75rem; justify-content: space-between;">
+          <button type="button" class="btn-secondary" id="cancelQuickCatBtn" style="color: var(--deep-forest);">Cancel</button>
+          <button type="submit" class="btn-primary" id="submitQuickCatBtn"><span>Create Category</span></button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ADMIN DASHBOARD MAIN WRAPPER -->
   <div id="adminDashboardApp">
     
@@ -400,17 +479,14 @@
       <div class="container admin-nav-flex">
         <div class="admin-brand-info">
           <img src="./images/bg-image.jpeg" alt="Logo">
-          <!-- <div>
-            <h3 style="font-family: var(--font-heading); font-size: 1.15rem; color: #ffffff; margin: 0;">Quad-Ace Herbs</h3>
-            <span style="font-size: 0.75rem; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.05em;">Admin Command Center</span>
-          </div> -->
         </div>
 
         <div style="display: flex; align-items: center; gap: 0.85rem;">
-          <a href="shop.html" target="_blank" class="btn-secondary" style="background: rgba(255, 255, 255, 0.1); color: #ffffff; border-color: rgba(255, 255, 255, 0.25); padding: 0.45rem 1rem; font-size: 0.85rem;">
+          
+          <a href="shop.html" target="_blank" class="btn-secondary" style="background: rgba(255, 255, 255, 0.1); color: #ffffff; border-color: rgba(255, 255, 255, 0.25); padding: 10px; font-size: 0.55rem;">
             <span>View Live Shop</span>
           </a>
-          <a href="index.html" target="_blank" class="btn-secondary" style="background: rgba(255, 255, 255, 0.1); color: #ffffff; border-color: rgba(255, 255, 255, 0.25); padding: 0.45rem 1rem; font-size: 0.85rem;">
+          <a href="index.html" target="_blank" class="btn-secondary" style="background: rgba(255, 255, 255, 0.1); color: #ffffff; border-color: rgba(255, 255, 255, 0.25); padding: 10px; font-size: 0.55rem;">
             <span>View Home</span>
           </a>
           <button type="button" id="adminLogoutBtn" style="background: none; border: 1px solid rgba(255, 255, 255, 0.3); color: #fca5a5; padding: 0.45rem 0.85rem; border-radius: var(--radius-sm); font-size: 0.82rem; cursor: pointer;">
@@ -460,6 +536,14 @@
         </div>
 
         <div class="admin-stat-card">
+          <div class="stat-icon-wrap" style="background: rgba(139, 92, 246, 0.12); color: #7c3aed;">🏷️</div>
+          <div>
+            <div class="stat-number" id="statTotalCategories">5</div>
+            <div class="stat-label">Active Categories</div>
+          </div>
+        </div>
+
+        <div class="admin-stat-card">
           <div class="stat-icon-wrap" style="background: rgba(245, 158, 11, 0.12); color: #d97706;">⭐</div>
           <div>
             <div class="stat-number" id="statTotalReviews">0</div>
@@ -483,6 +567,9 @@
         </button>
         <button class="admin-tab-btn" data-tab="tabManage">
           <span>📦 Manage All Products (<span id="tabCountBadge">0</span>)</span>
+        </button>
+        <button class="admin-tab-btn" data-tab="tabCategories">
+          <span>🏷️ Categories (<span id="tabCategoriesBadge">5</span>)</span>
         </button>
         <button class="admin-tab-btn" data-tab="tabReviews">
           <span>💬 Customer Reviews (<span id="tabReviewsBadge">0</span>)</span>
@@ -508,13 +595,14 @@
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="prodCategory">Category *</label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                  <label class="form-label" for="prodCategory" style="margin: 0;">Category *</label>
+                  <button type="button" id="quickAddCatModalBtn" style="background: none; border: none; color: var(--primary-green); font-size: 0.8rem; font-weight: 700; cursor: pointer; text-decoration: underline; padding: 0;">
+                    ➕ Create New Category
+                  </button>
+                </div>
                 <select id="prodCategory" class="form-input" required>
-                  <option value="agbo">Agbo & Tonics (Digestive, Flushes)</option>
-                  <option value="men">Men's Vitality (Virility, Stamina)</option>
-                  <option value="women">Women's Wellness (Womb, Fertility, Hormones)</option>
-                  <option value="raw">Raw Roots & Pods (Prekese, Spices)</option>
-                  <option value="wellness">Immunity & Detox (Liver, Blood, General)</option>
+                  <!-- Dynamically populated from getStoreCategories() -->
                 </select>
               </div>
             </div>
@@ -635,11 +723,11 @@
               </div>
             </div>
 
-            <div style="display: flex; gap: 1rem; margin-top: 1.5rem; justify-content: flex-end;">
+            <div style="display: flex; gap: 1rem; margin-top: 2.5rem; justify-content: space-between;">
               <button type="reset" class="btn-secondary" id="resetFormBtn" style="color: var(--deep-forest);">
                 <span>Reset Form</span>
               </button>
-              <button type="submit" class="btn-primary" id="publishProductBtn" style="padding: 0.85rem 2rem;">
+              <button type="submit" class="btn-primary" id="publishProductBtn">
                 <span>Publish</span>
               </button>
             </div>
@@ -676,6 +764,102 @@
               </thead>
               <tbody id="productsTableBody">
                 <!-- Dynamically generated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: MANAGE CATEGORIES -->
+      <div class="admin-panel" id="tabCategories">
+        <div class="admin-card">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+            <div>
+              <h3>🏷️ Category Management</h3>
+              <p class="admin-card-subtitle" style="margin: 0;">
+                Create custom categories for your shop. New categories instantly appear in the product creation form, on the Shop page sidebar, and on the Home page category pills!
+              </p>
+            </div>
+            <button type="button" class="btn-secondary" id="resetCategoriesBtn" style="font-size: 0.8rem; padding: 0.45rem 0.85rem; color: var(--text-secondary);">
+              <span>🔄 Restore Default Categories</span>
+            </button>
+          </div>
+
+          <!-- Form to Create New Category -->
+          <div style="background: #f8faf9; padding: 1.5rem; border-radius: var(--radius-lg); border: 1.5px solid rgba(24, 66, 46, 0.12); margin-bottom: 2rem;">
+            <h4 style="font-family: var(--font-heading); color: var(--deep-forest); font-size: 1.15rem; margin-bottom: 0.35rem;">
+              ➕ Create a Brand-New Category
+            </h4>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+              Give your new category an authentic name, an emoji icon, and an optional brief description.
+            </p>
+
+            <form id="addCategoryForm" onsubmit="return false;">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label" for="newCatName">Category Name *</label>
+                  <input type="text" id="newCatName" class="form-input" placeholder="e.g. Skin & Hair Elixirs, Fertility Teas, Ulcer Solutions" required>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="newCatIcon">Category Icon / Emoji</label>
+                  <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="newCatIcon" class="form-input" value="🌿" style="width: 70px; text-align: center; font-size: 1.3rem;" maxlength="4">
+                    <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;" id="catEmojiPicker">
+                      <button type="button" class="emoji-pick-btn" data-emoji="🌿">🌿</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="🏺">🏺</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="⚡">⚡</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="🌸">🌸</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="🪵">🪵</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="🛡️">🛡️</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="🫖">🫖</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="🍵">🍵</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="💆‍♀️">💆‍♀️</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="🍯">🍯</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="🔥">🔥</button>
+                      <button type="button" class="emoji-pick-btn" data-emoji="🩸">🩸</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="newCatDesc">Short Description / Subtitle (Optional)</label>
+                <input type="text" id="newCatDesc" class="form-input" placeholder="e.g. Natural herbal solutions for glowing skin, hair growth and healthy scalp">
+              </div>
+
+              <div style="display: flex; justify-content: flex-end;">
+                <button type="submit" class="btn-primary" id="saveCategoryBtn" style="padding: 0.75rem 1.85rem;">
+                  <span>➕ Create & Save Category</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Category List Table -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
+            <h4 style="font-family: var(--font-heading); color: var(--deep-forest); font-size: 1.15rem; margin: 0;">
+              📋 All Categories (<span id="catTableCount">0</span>)
+            </h4>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">
+              Categories automatically sync across the Shop sidebar & Home page pills.
+            </span>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table class="product-manage-table" id="categoriesTable">
+              <thead>
+                <tr>
+                  <th style="width: 55px; text-align: center;">Icon</th>
+                  <th>Category Title</th>
+                  <th>Description</th>
+                  <th>Products Assigned</th>
+                  <th>Type</th>
+                  <th style="text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="categoriesTableBody">
+                <!-- Dynamically populated by admin.js -->
               </tbody>
             </table>
           </div>

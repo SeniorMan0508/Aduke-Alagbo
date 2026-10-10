@@ -21,36 +21,59 @@
     return "₦" + Number(num).toLocaleString("en-NG");
   }
 
-  // Update category counts in the sidebar
-  function updateCategoryCounts() {
+  // Dynamically render sidebar categories with live counters
+  function renderSidebarCategories() {
+    const list = document.getElementById("sidebarCategoryList");
+    if (!list) return;
+
+    const categories = typeof getStoreCategories === "function" 
+      ? getStoreCategories(true) 
+      : [
+          { id: "all", label: "All Remedies", icon: "🌱" },
+          { id: "agbo", label: "Agbo & Tonics", icon: "🏺" },
+          { id: "men", label: "Men's Vitality", icon: "⚡" },
+          { id: "women", label: "Women's Wellness", icon: "🌸" },
+          { id: "raw", label: "Raw Roots & Spices", icon: "🪵" },
+          { id: "wellness", label: "Immunity & Detox", icon: "🛡️" }
+        ];
+
     const products = typeof getStoreProducts === "function" ? getStoreProducts() : PRODUCTS_DATA;
 
-    const counts = {
-      all: products.length,
-      agbo: 0,
-      men: 0,
-      women: 0,
-      raw: 0,
-      wellness: 0
-    };
+    const counts = { all: products.length };
+    categories.forEach(c => {
+      if (c.id !== "all") counts[c.id] = 0;
+    });
 
     products.forEach(p => {
-      if (counts[p.category] !== undefined) {
-        counts[p.category]++;
+      if (p.category) {
+        counts[p.category] = (counts[p.category] || 0) + 1;
       }
     });
 
-    const setBadge = (id, count) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = count;
-    };
+    list.innerHTML = categories.map(cat => {
+      const count = counts[cat.id] || 0;
+      const isActive = cat.id === shopFilterState.selectedCategory;
+      const iconStr = cat.icon ? `<span style="font-size: 1.05rem; margin-right: 0.35rem;">${cat.icon}</span>` : "";
+      return `
+        <button class="sidebar-cat-btn ${isActive ? 'active' : ''}" data-category="${cat.id}">
+          <span style="display: inline-flex; align-items: center;">${iconStr}${cat.label}</span>
+          <span class="cat-count">${count}</span>
+        </button>
+      `;
+    }).join("");
 
-    setBadge("countAll", counts.all);
-    setBadge("countAgbo", counts.agbo);
-    setBadge("countMen", counts.men);
-    setBadge("countWomen", counts.women);
-    setBadge("countRaw", counts.raw);
-    setBadge("countWellness", counts.wellness);
+    list.querySelectorAll(".sidebar-cat-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        list.querySelectorAll(".sidebar-cat-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        shopFilterState.selectedCategory = btn.dataset.category;
+        renderShopGrid();
+      });
+    });
+  }
+
+  function updateCategoryCounts() {
+    renderSidebarCategories();
   }
 
   // Filter and sort products for shop.html
@@ -181,10 +204,7 @@
     const defaultRadio = document.querySelector("#priceFilterGroup input[value='all']");
     if (defaultRadio) defaultRadio.checked = true;
 
-    document.querySelectorAll("#sidebarCategoryList .sidebar-cat-btn").forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.category === "all");
-    });
-
+    renderSidebarCategories();
     renderShopGrid();
   }
 
@@ -197,16 +217,8 @@
       shopFilterState.selectedCategory = categoryParam;
     }
 
-    // 2. Set active sidebar category button
-    document.querySelectorAll("#sidebarCategoryList .sidebar-cat-btn").forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.category === shopFilterState.selectedCategory);
-      btn.addEventListener("click", () => {
-        document.querySelectorAll("#sidebarCategoryList .sidebar-cat-btn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        shopFilterState.selectedCategory = btn.dataset.category;
-        renderShopGrid();
-      });
-    });
+    // 2. Render sidebar categories with active selection
+    renderSidebarCategories();
 
     // 3. Search input
     const searchInput = document.getElementById("shopSearchInput");
@@ -247,10 +259,15 @@
     updateCategoryCounts();
     renderShopGrid();
 
-    // 8. Listen for storage updates (e.g. when Admin adds/removes products in another tab or window!)
+    // 8. Listen for storage updates (e.g. when Admin adds/removes products or categories in another tab or window!)
     window.addEventListener("storage", (e) => {
-      if (e.key === "quadace_custom_products" || e.key === "quadace_deleted_products") {
-        updateCategoryCounts();
+      if (
+        e.key === "quadace_custom_products" ||
+        e.key === "quadace_deleted_products" ||
+        e.key === "quadace_custom_categories" ||
+        e.key === "quadace_deleted_categories"
+      ) {
+        renderSidebarCategories();
         renderShopGrid();
       }
     });

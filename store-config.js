@@ -18,7 +18,7 @@ const STORE_CONFIG = {
   sellerPhone: "+234 905 512 6388",
   whatsappNumber: "2349055126388",
   sellerEmail: "badmusdaniel0508@gmail.com",
-  storeLocation: "Abeokuta, Nigeria",
+  storeLocation: "Abeokuta, Ogun State, Nigeria",
   openingHours: "Mon - Sat: 8:00 AM - 7:00 PM (WAT)",
 
   // Currency
@@ -43,7 +43,7 @@ const STORE_CONFIG = {
   // Delivery Options & Fees
   shipping: {
     local: {
-      name: "Local Intra-State Dispatch (Same/Next Day)",
+      name: "Local Intra-State Dispatch (Abeokuta Same/Next Day)",
       price: 2500,
       feeLabel: "₦2,500",
       description: "Fast doorstep courier in Abeokuta & nearby environs"

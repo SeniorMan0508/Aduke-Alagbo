@@ -266,14 +266,13 @@ const PRODUCTS_DATA = [
   }
 ];
 
-// Quick Categories
-const CATEGORIES = [
-  { id: "all", label: "All Herbs", icon: "🌱" },
-  { id: "agbo", label: "Agbo & Tonics", icon: "🏺" },
-  { id: "men", label: "Men's Vitality", icon: "⚡" },
-  { id: "women", label: "Women's Wellness", icon: "🌸" },
-  { id: "raw", label: "Raw Roots & Pods", icon: "🪵" },
-  { id: "wellness", label: "Immunity & Detox", icon: "🛡️" }
+// Default Core Categories
+const DEFAULT_CATEGORIES = [
+  { id: "agbo", label: "Agbo & Tonics", icon: "🏺", desc: "Digestive flushes, pile & ancestral tonics", isDefault: true },
+  { id: "men", label: "Men's Vitality", icon: "⚡", desc: "Virility, stamina & male wellness roots", isDefault: true },
+  { id: "women", label: "Women's Wellness", icon: "🌸", desc: "Womb cleanses, cycle & hormonal harmony", isDefault: true },
+  { id: "raw", label: "Raw Roots & Pods", icon: "🪵", desc: "Aidan pods (Prekese), bitter kola & raw spices", isDefault: true },
+  { id: "wellness", label: "Immunity & Detox", icon: "🛡️", desc: "Liver cleanse, antiviral & blood purifiers", isDefault: true }
 ];
 
 // Health Goal Tags
@@ -288,12 +287,162 @@ const HEALTH_GOALS = [
 ];
 
 // ==========================================================================
-// DYNAMIC PRODUCT CATALOG STORE (Syncs between Admin, Shop, & Home)
+// DYNAMIC CATALOG & CATEGORY STORE (Syncs between Admin, Shop, & Home)
 // ==========================================================================
 const QUADACE_STORAGE_KEYS = {
   CUSTOM_PRODUCTS: "quadace_custom_products",
-  DELETED_PRODUCTS: "quadace_deleted_products"
+  DELETED_PRODUCTS: "quadace_deleted_products",
+  CUSTOM_CATEGORIES: "quadace_custom_categories",
+  DELETED_CATEGORIES: "quadace_deleted_categories"
 };
+
+/**
+ * Retrieve all active categories (combines defaults with owner-created categories).
+ * @param {boolean} includeAll - If true, prepends { id: "all", label: "All Herbs", icon: "🌱" }
+ */
+function getStoreCategories(includeAll = false) {
+  let custom = [];
+  let deleted = [];
+
+  try {
+    const savedCustom = localStorage.getItem(QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES);
+    if (savedCustom) {
+      custom = JSON.parse(savedCustom);
+      if (!Array.isArray(custom)) custom = [];
+    }
+  } catch (e) {
+    console.warn("Could not read custom categories from storage", e);
+  }
+
+  try {
+    const savedDeleted = localStorage.getItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES);
+    if (savedDeleted) {
+      deleted = JSON.parse(savedDeleted);
+      if (!Array.isArray(deleted)) deleted = [];
+    }
+  } catch (e) {
+    console.warn("Could not read deleted categories from storage", e);
+  }
+
+  const activeBase = DEFAULT_CATEGORIES.filter(c => !deleted.includes(c.id));
+  const activeCustom = custom.filter(c => !deleted.includes(c.id));
+  const combined = [...activeBase, ...activeCustom];
+
+  if (includeAll) {
+    return [{ id: "all", label: "All Herbs", icon: "🌱", desc: "All remedies in stock" }, ...combined];
+  }
+  return combined;
+}
+
+/**
+ * Get display label for a category ID.
+ */
+function getCategoryLabel(categoryId) {
+  if (!categoryId || categoryId === "all") return "All Remedies";
+  const allCats = getStoreCategories(false);
+  const found = allCats.find(c => c.id === categoryId);
+  if (found) return found.label;
+
+  // Pretty fallback for unknown slug
+  return categoryId
+    .replace(/^cat-/, "")
+    .split("-")
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/**
+ * Save or update a category from the Admin Dashboard.
+ */
+function saveStoreCategory(category) {
+  if (!category || (!category.label && !category.name)) return null;
+
+  const rawLabel = (category.label || category.name).trim();
+  const id = category.id || ("cat-" + rawLabel.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-") + "-" + Date.now().toString().slice(-4));
+  const icon = (category.icon ? category.icon.trim() : "") || "🌿";
+  const desc = (category.desc || "").trim();
+
+  const newCat = {
+    id,
+    label: rawLabel,
+    icon,
+    desc,
+    isCustom: true,
+    createdAt: category.createdAt || new Date().toISOString()
+  };
+
+  let custom = [];
+  try {
+    const savedCustom = localStorage.getItem(QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES);
+    if (savedCustom) {
+      custom = JSON.parse(savedCustom);
+      if (!Array.isArray(custom)) custom = [];
+    }
+  } catch (e) {}
+
+  const existingIdx = custom.findIndex(c => c.id === id);
+  if (existingIdx >= 0) {
+    custom[existingIdx] = newCat;
+  } else {
+    custom.push(newCat);
+  }
+
+  localStorage.setItem(QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES, JSON.stringify(custom));
+
+  // Undelete if previously marked deleted
+  try {
+    const savedDeleted = localStorage.getItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES);
+    if (savedDeleted) {
+      let deleted = JSON.parse(savedDeleted);
+      deleted = deleted.filter(delId => delId !== id);
+      localStorage.setItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES, JSON.stringify(deleted));
+    }
+  } catch (e) {}
+
+  return newCat;
+}
+
+/**
+ * Delete a category by ID (works for both custom and default categories).
+ */
+function deleteStoreCategory(categoryId) {
+  if (!categoryId || categoryId === "all") return false;
+
+  // Remove from custom list
+  try {
+    const savedCustom = localStorage.getItem(QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES);
+    if (savedCustom) {
+      let custom = JSON.parse(savedCustom);
+      custom = custom.filter(c => c.id !== categoryId);
+      localStorage.setItem(QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES, JSON.stringify(custom));
+    }
+  } catch (e) {}
+
+  // Add to deleted categories list
+  try {
+    let deleted = [];
+    const savedDeleted = localStorage.getItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES);
+    if (savedDeleted) deleted = JSON.parse(savedDeleted);
+    if (!deleted.includes(categoryId)) {
+      deleted.push(categoryId);
+      localStorage.setItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES, JSON.stringify(deleted));
+    }
+  } catch (e) {}
+
+  return true;
+}
+
+/**
+ * Reset categories to original factory defaults.
+ */
+function resetStoreCategories() {
+  localStorage.removeItem(QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES);
+  localStorage.removeItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES);
+  return true;
+}
+
+// Backward compatibility export for global CATEGORIES reference
+var CATEGORIES = getStoreCategories(true);
 
 /**
  * Retrieve all active products for the store.

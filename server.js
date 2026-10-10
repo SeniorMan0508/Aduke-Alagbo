@@ -53,6 +53,7 @@ if (!fs.existsSync(DATA_DIR)) {
 
 const AUTH_FILE = path.join(DATA_DIR, 'admin-auth.json');
 const PRODUCTS_FILE = path.join(DATA_DIR, 'custom-products.json');
+const CATEGORIES_FILE = path.join(DATA_DIR, 'custom-categories.json');
 const REVIEWS_FILE = path.join(DATA_DIR, 'reviews.json');
 
 // --- CRYPTOGRAPHIC UTILITIES ---
@@ -108,6 +109,9 @@ function getEmailTransporter() {
       port: 465,
       secure: true,
       family: 4, // Force IPv4 on cloud hosts like Render to prevent ENETUNREACH IPv6 errors
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 6000,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS
@@ -120,11 +124,87 @@ function getEmailTransporter() {
   return null;
 }
 
-// In-memory verification code store (code -> { email, expiresAt })
-const activeResetCodes = new Map();
+// Reset codes file persistence path
+const RESET_CODES_FILE = path.join(__dirname, 'data', 'reset-codes.json');
+
+function loadResetCodes() {
+  try {
+    if (fs.existsSync(RESET_CODES_FILE)) {
+      const raw = fs.readFileSync(RESET_CODES_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      const now = Date.now();
+      const map = new Map();
+      for (const [c, entry] of Object.entries(data)) {
+        if (entry && entry.expiresAt > now) {
+          map.set(c, entry);
+        }
+      }
+      return map;
+    }
+  } catch (e) {
+    console.warn('[RESET CODES] Error loading reset codes file:', e.message);
+  }
+  return new Map();
+}
+
+function saveResetCodes(map) {
+  try {
+    const obj = {};
+    for (const [c, entry] of map.entries()) {
+      obj[c] = entry;
+    }
+    fs.writeFileSync(RESET_CODES_FILE, JSON.stringify(obj, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[RESET CODES] Error saving reset codes file:', e.message);
+  }
+}
+
+// In-memory verification code store (code -> { email, expiresAt }) backed by file persistence
+const activeResetCodes = loadResetCodes();
 let lastCodeSentTimestamp = 0;
 
+/**
+ * Dispatches reset email via Netlify serverless function
+ * (bypasses cloud host SMTP port blocking on Render)
+ */
+async function sendViaNetlifyFunction(toEmail, code) {
+  const netlifyUrl = 'https://quad-ace-herbs.netlify.app/.netlify/functions/send-reset-email';
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    const response = await fetch(netlifyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toEmail, code }),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await response.json();
+    if (response.ok && data.success) {
+      console.log(`[EMAIL] Reset code sent via Netlify Serverless Function to ${toEmail}`);
+      return { sent: true, method: 'netlify_function' };
+    } else {
+      console.warn(`[EMAIL WARN] Netlify function returned error:`, data);
+      return { sent: false, error: data.error || data.message };
+    }
+  } catch (err) {
+    console.warn(`[EMAIL WARN] Netlify dispatch failed:`, err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
 async function sendResetEmail(toEmail, code) {
+  // If running on Render or other cloud environment where SMTP ports are blocked,
+  // dispatch directly via Netlify Serverless Function (which uses port 587 and is never blocked)
+  const isCloudHost = Boolean(process.env.RENDER || process.env.NODE_ENV === 'production');
+
+  if (isCloudHost) {
+    console.log(`[EMAIL] Running on cloud environment (Render). Dispatching reset email via Netlify serverless function...`);
+    const netlifyRes = await sendViaNetlifyFunction(toEmail, code);
+    if (netlifyRes.sent) return netlifyRes;
+  }
+
+  // Direct SMTP transport (works on local development / laptop)
   const transporter = getEmailTransporter();
   const LOGO_PATH = path.join(__dirname, 'images', 'bg-image.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
@@ -147,7 +227,7 @@ async function sendResetEmail(toEmail, code) {
         ⏳ <strong>Note:</strong> This verification code is valid for <strong>15 minutes</strong>. If you did not request this password reset, you can safely ignore this email.
       </p>
       <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-      <p style="font-size: 11px; color: #94a3b8; text-align: center;">Quad-Ace Herbs • Authentic Ancestral Remedies</p>
+      <p style="font-size: 11px; color: #94a3b8; text-align: center;">Quad-Ace Herbs • Authentic Ancestral Remedies • Abeokuta, Ogun State, Nigeria</p>
     </div>
   `;
 
@@ -171,9 +251,13 @@ async function sendResetEmail(toEmail, code) {
       console.log(`[EMAIL] Verification code successfully sent via SMTP to ${toEmail}`);
       return { sent: true, method: 'smtp' };
     } catch (err) {
-      console.error(`[EMAIL ERROR] Failed to send email via SMTP:`, err.message);
-      return { sent: false, error: err.message, method: 'smtp_failed' };
+      console.warn(`[EMAIL WARN] Direct SMTP failed (${err.message}). Trying Netlify function fallback...`);
+      const fallbackRes = await sendViaNetlifyFunction(toEmail, code);
+      if (fallbackRes.sent) return fallbackRes;
     }
+  } else if (!isCloudHost) {
+    const netlifyRes = await sendViaNetlifyFunction(toEmail, code);
+    if (netlifyRes.sent) return netlifyRes;
   }
 
   // Graceful simulation log in console for development/offline testing
@@ -182,7 +266,6 @@ async function sendResetEmail(toEmail, code) {
   console.log(`📬 To: ${toEmail}`);
   console.log(`🔑 6-Digit Verification Code: ${code}`);
   console.log(`⏳ Valid for: 15 minutes`);
-  console.log(`💡 To configure real Gmail delivery, set SMTP_USER & SMTP_PASS in .env`);
   console.log('======================================================\n');
   return { sent: false, method: 'simulated' };
 }
@@ -313,7 +396,7 @@ async function sendOrderNotificationEmail(orderData) {
 
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0 16px 0;">
         <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">
-          Quad-Ace Herbs • Authentic Ancestral Remedies • Lagos & Abeokuta, Nigeria
+          Quad-Ace Herbs • Authentic Ancestral Remedies • Abeokuta, Ogun State, Nigeria
         </p>
       </div>
     </div>
@@ -515,6 +598,7 @@ app.post('/api/auth/send-reset-code', async (req, res) => {
     email: ownerEmail,
     expiresAt: expiresAt
   });
+  saveResetCodes(activeResetCodes);
   lastCodeSentTimestamp = now;
 
   try {
@@ -563,7 +647,8 @@ app.post('/api/auth/verify-reset-code', (req, res) => {
   }
 
   const cleanCode = code.trim();
-  const record = activeResetCodes.get(cleanCode);
+  const currentCodes = loadResetCodes();
+  const record = currentCodes.get(cleanCode) || activeResetCodes.get(cleanCode);
 
   if (!record) {
     return res.status(400).json({
@@ -574,6 +659,8 @@ app.post('/api/auth/verify-reset-code', (req, res) => {
 
   if (Date.now() > record.expiresAt) {
     activeResetCodes.delete(cleanCode);
+    currentCodes.delete(cleanCode);
+    saveResetCodes(currentCodes);
     return res.status(400).json({
       success: false,
       message: 'This verification code has expired. Please request a fresh code.'
@@ -594,6 +681,8 @@ app.post('/api/auth/verify-reset-code', (req, res) => {
 
   // Consume code so it cannot be used again
   activeResetCodes.delete(cleanCode);
+  currentCodes.delete(cleanCode);
+  saveResetCodes(currentCodes);
 
   const newToken = createSession();
   console.log(`[AUTH] Admin password was successfully reset via email OTP at ${new Date().toISOString()}`);
@@ -714,6 +803,84 @@ app.delete('/api/products/:id', (req, res) => {
   res.json({ success: true, message: 'Product deleted from server' });
 });
 
+// --- CATEGORIES API ENDPOINTS ---
+function getCustomCategories() {
+  try {
+    if (fs.existsSync(CATEGORIES_FILE)) {
+      const raw = fs.readFileSync(CATEGORIES_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn('[SERVER] Could not read categories file:', err.message);
+  }
+  return [];
+}
+
+function saveCustomCategories(categories) {
+  try {
+    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categories, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error('[SERVER] Could not save categories:', err.message);
+    return false;
+  }
+}
+
+/**
+ * GET /api/categories
+ * Retrieve all custom categories stored on server
+ */
+app.get('/api/categories', (req, res) => {
+  const categories = getCustomCategories();
+  res.json({ success: true, categories });
+});
+
+/**
+ * POST /api/categories
+ * Add or update a category
+ */
+app.post('/api/categories', (req, res) => {
+  const cat = req.body;
+  if (!cat || (!cat.name && !cat.label)) {
+    return res.status(400).json({ success: false, message: 'Invalid category data' });
+  }
+
+  const label = (cat.label || cat.name).trim();
+  const id = cat.id || ('cat-' + label.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-') + '-' + Date.now().toString().slice(-4));
+  const newCat = {
+    id,
+    label,
+    icon: (cat.icon || '🌿').trim(),
+    desc: (cat.desc || '').trim(),
+    isCustom: true,
+    createdAt: cat.createdAt || new Date().toISOString()
+  };
+
+  const categories = getCustomCategories();
+  const existingIdx = categories.findIndex(c => c.id === id);
+  if (existingIdx >= 0) {
+    categories[existingIdx] = newCat;
+  } else {
+    categories.push(newCat);
+  }
+
+  saveCustomCategories(categories);
+  res.json({ success: true, category: newCat, message: 'Category saved on server' });
+});
+
+/**
+ * DELETE /api/categories/:id
+ * Remove a custom category
+ */
+app.delete('/api/categories/:id', (req, res) => {
+  const { id } = req.params;
+  let categories = getCustomCategories();
+  categories = categories.filter(c => c.id !== id);
+  saveCustomCategories(categories);
+  res.json({ success: true, message: 'Category deleted from server' });
+});
+
 // --- CUSTOMER REVIEWS API ENDPOINTS ---
 
 const DEFAULT_REVIEWS = [
@@ -798,7 +965,7 @@ app.post('/api/reviews', (req, res) => {
 
   // Safety protection: truncate fields so comments cannot bloat storage
   const safeName = name.trim().slice(0, 80);
-  const safeLocation = (location && location.trim()) ? location.trim().slice(0, 80) : 'Lagos, Nigeria';
+  const safeLocation = (location && location.trim()) ? location.trim().slice(0, 80) : 'Abeokuta, Nigeria';
   const safeRemedy = (remedy && remedy.trim()) ? remedy.trim().slice(0, 100) : 'Authentic Herbal Remedy';
   const safeComment = comment.trim().slice(0, 1000); // Max 1,000 characters per comment
 

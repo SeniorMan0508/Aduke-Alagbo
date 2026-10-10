@@ -72,7 +72,36 @@ In the **"⚙️ Store Info & Backup"** tab under **"Admin Recovery Email"**, sh
 
 ---
 
-## 💬 4. Customer Comments & Post-Purchase Reviews
+## 🏷️ 4. Creating and Managing Categories
+
+The owner can now create **unlimited new herbal categories** at any time:
+
+### ✨ How to Create a New Category:
+1. Log in to [admin.html](file:///c:/Users/USER/OneDrive/Desktop/herbs%20website/admin.html).
+2. Click the **"🏷️ Categories"** tab.
+3. In the **"Create a Brand-New Category"** card:
+   - Enter the **Category Name** (e.g. *Fertility Teas & Tonics*, *Skin & Hair Elixirs*, *Ulcer & Stomach Healing*, *Children's Herbal Syrups*).
+   - Pick an emoji or enter an icon (e.g. 🌿, 🫖, 💆‍♀️, 🍯, 🍵, ⚡, 🌸).
+   - Enter an optional short description / tagline.
+   - Click **"➕ Create & Save Category"**.
+4. **Done!** The new category is immediately active:
+   - It appears in the **Category dropdown** when creating or editing products.
+   - It appears in the **Shop Page sidebar filter (`shop.html`)** with live product counts.
+   - It appears on the **Home Page category filter pills (`index.html`)** so customers can explore it immediately!
+
+### ⚡ Shortcut: Create a Category While Adding a Product
+- When inside the **"➕ Add New Product"** tab, click **"➕ Create New Category"** right above the Category dropdown.
+- Type the name and click **"Create Category ✓"**.
+- It is immediately created, added to your catalog, and selected for your new product automatically without having to switch tabs!
+
+### 🗑️ Removing or Restoring Categories:
+- In the **"🏷️ Categories"** tab, scroll to **"All Categories"** to see all active categories, their icons, descriptions, and how many remedies are assigned to each.
+- Click **"🗑️ Delete"** next to any custom category to remove it. (If products are assigned to it, a safety warning will appear).
+- To revert back to original factory categories at any time, click **"🔄 Restore Default Categories"**.
+
+---
+
+## 💬 5. Customer Comments & Post-Purchase Reviews
 
 Customers can now leave reviews and comments that **always appear on the website homepage**:
 

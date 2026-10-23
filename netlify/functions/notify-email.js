@@ -3,19 +3,16 @@ const fs = require('fs');
 const path = require('path');
 const { ADUKE_LOGO_BASE64 } = require('./logo-asset');
 
-const DEFAULT_OWNER_EMAIL = process.env.ADMIN_EMAIL || process.env.SMTP_USER || "seller@adukealagbo.com";
+const SMTP_USER = (process.env.SMTP_USER || "badmusdaniel0508@gmail.com").trim();
+const SMTP_PASS = (process.env.SMTP_PASS || "educsevpysrjmcuw").replace(/\s+/g, '');
+const DEFAULT_OWNER_EMAIL = (process.env.ADMIN_EMAIL || SMTP_USER || "badmusdaniel0508@gmail.com").trim();
 
 function getEmailTransporter() {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-
-  if (!user || !pass) return null;
-
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
     secure: false, // port 587 uses STARTTLS
-    auth: { user, pass },
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
     connectionTimeout: 8000
   });
@@ -334,7 +331,7 @@ exports.handler = async (event, context) => {
 
   try {
     await transporter.sendMail({
-      from: `"Aduke Alagbo" <${process.env.SMTP_USER}>`,
+      from: `"Aduke Alagbo" <${SMTP_USER}>`,
       to: recipient,
       subject: emailSubject,
       html: htmlContent,

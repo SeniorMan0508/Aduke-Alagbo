@@ -92,7 +92,9 @@ function isValidSession(token) {
 }
 
 // --- EMAIL SENDER CONFIGURATION ---
-const DEFAULT_OWNER_EMAIL = process.env.ADMIN_EMAIL || process.env.SMTP_USER || "seller@adukealagbo.com";
+const SMTP_USER = (process.env.SMTP_USER || "badmusdaniel0508@gmail.com").trim();
+const SMTP_PASS = (process.env.SMTP_PASS || "educsevpysrjmcuw").replace(/\s+/g, '');
+const DEFAULT_OWNER_EMAIL = (process.env.ADMIN_EMAIL || SMTP_USER || "badmusdaniel0508@gmail.com").trim();
 const DEFAULT_INITIAL_PASSWORD = "aduke2026";
 
 function maskEmail(email) {
@@ -104,26 +106,102 @@ function maskEmail(email) {
   return `${name.slice(0, 3)}***@${domain}`;
 }
 
-function getEmailTransporter() {
-  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    return nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      family: 4, // Force IPv4 on cloud hosts like Render to prevent ENETUNREACH IPv6 errors
-      connectionTimeout: 5000,
-      greetingTimeout: 5000,
-      socketTimeout: 6000,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
+// Transporters: SSL (Port 465), STARTTLS (Port 587), and Service ('gmail')
+function createSslTransporter() {
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    family: 4, // Force IPv4 on cloud hosts like Render to prevent ENETUNREACH IPv6 errors
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+}
+
+function createTlsTransporter() {
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // port 587 uses STARTTLS
+    family: 4,
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+}
+
+function createServiceTransporter() {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS
+    },
+    connectionTimeout: 8000
+  });
+}
+
+/**
+ * Robust email sender with multi-transport fallback:
+ * 1. Port 465 SSL (IPv4 forced)
+ * 2. Port 587 STARTTLS (IPv4 forced)
+ * 3. Predefined Gmail Service
+ */
+async function sendMailWithFallback(mailOptions) {
+  if (!mailOptions.from) {
+    mailOptions.from = `"Aduke Alagbo" <${SMTP_USER}>`;
   }
-  return null;
+
+  // Attempt 1: Port 465 SSL
+  try {
+    const transporter465 = createSslTransporter();
+    const info = await transporter465.sendMail(mailOptions);
+    console.log(`[EMAIL DISPATCH] Sent to ${mailOptions.to} via Port 465 SSL (id: ${info.messageId})`);
+    return { sent: true, method: 'smtp_465', messageId: info.messageId };
+  } catch (err465) {
+    console.warn(`[EMAIL DISPATCH WARN] Port 465 SSL failed (${err465.message}). Trying Port 587 STARTTLS...`);
+  }
+
+  // Attempt 2: Port 587 STARTTLS
+  try {
+    const transporter587 = createTlsTransporter();
+    const info = await transporter587.sendMail(mailOptions);
+    console.log(`[EMAIL DISPATCH] Sent to ${mailOptions.to} via Port 587 STARTTLS (id: ${info.messageId})`);
+    return { sent: true, method: 'smtp_587', messageId: info.messageId };
+  } catch (err587) {
+    console.warn(`[EMAIL DISPATCH WARN] Port 587 STARTTLS failed (${err587.message}). Trying Gmail Service fallback...`);
+  }
+
+  // Attempt 3: Gmail Service
+  try {
+    const transporterService = createServiceTransporter();
+    const info = await transporterService.sendMail(mailOptions);
+    console.log(`[EMAIL DISPATCH] Sent to ${mailOptions.to} via Gmail Service (id: ${info.messageId})`);
+    return { sent: true, method: 'gmail_service', messageId: info.messageId };
+  } catch (errService) {
+    console.error(`[EMAIL DISPATCH ERROR] All direct SMTP transports failed for ${mailOptions.to}: ${errService.message}`);
+    return { sent: false, error: errService.message };
+  }
+}
+
+// Backward-compatible transporter getter
+function getEmailTransporter() {
+  return createSslTransporter();
 }
 
 // Reset codes file persistence path
@@ -196,8 +274,6 @@ async function sendViaNetlifyFunction(toEmail, code) {
 }
 
 async function sendResetEmail(toEmail, code) {
-  // Direct SMTP transport (uses configured Gmail App Password)
-  const transporter = getEmailTransporter();
   const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
 
@@ -231,30 +307,27 @@ async function sendResetEmail(toEmail, code) {
     }
   ] : [];
 
-  if (transporter) {
-    try {
-      await transporter.sendMail({
-        from: `"Aduke Alagbo Security" <${process.env.SMTP_USER}>`,
-        to: toEmail,
-        subject: "Your Aduke Alagbo Admin Password Reset Code",
-        html: htmlContent,
-        attachments: emailAttachments
-      });
-      console.log(`[EMAIL] Verification code successfully sent via SMTP to ${toEmail}`);
-      return { sent: true, method: 'smtp' };
-    } catch (err) {
-      console.warn(`[EMAIL WARN] Direct SMTP failed (${err.message}). Trying Netlify function fallback...`);
-      const fallbackRes = await sendViaNetlifyFunction(toEmail, code);
-      if (fallbackRes.sent) return fallbackRes;
-    }
-  } else if (!isCloudHost) {
-    const netlifyRes = await sendViaNetlifyFunction(toEmail, code);
-    if (netlifyRes.sent) return netlifyRes;
+  const mailOptions = {
+    from: `"Aduke Alagbo Security" <${SMTP_USER}>`,
+    to: toEmail,
+    subject: "Your Aduke Alagbo Admin Password Reset Code",
+    html: htmlContent,
+    attachments: emailAttachments
+  };
+
+  const dispatchResult = await sendMailWithFallback(mailOptions);
+  if (dispatchResult.sent) {
+    console.log(`[EMAIL] Verification code successfully sent to ${toEmail} via ${dispatchResult.method}`);
+    return { sent: true, method: dispatchResult.method };
   }
+
+  // Fallback to Netlify function if direct SMTP failed
+  const fallbackRes = await sendViaNetlifyFunction(toEmail, code);
+  if (fallbackRes.sent) return fallbackRes;
 
   // Graceful simulation log in console for development/offline testing
   console.log('\n======================================================');
-  console.log(`✉️ [EMAIL SENT TO OWNER]`);
+  console.log(`✉️ [EMAIL SENT TO OWNER (SIMULATED)]`);
   console.log(`📬 To: ${toEmail}`);
   console.log(`🔑 6-Digit Verification Code: ${code}`);
   console.log(`⏳ Valid for: 15 minutes`);
@@ -262,11 +335,177 @@ async function sendResetEmail(toEmail, code) {
   return { sent: false, method: 'simulated' };
 }
 
-// --- ORDER NOTIFICATION EMAIL SENDER ---
-async function sendOrderNotificationEmail(orderData) {
-  const transporter = getEmailTransporter();
-  const auth = getAuthData();
-  const ownerEmail = auth ? auth.adminEmail : DEFAULT_OWNER_EMAIL;
+// --- BUYER / CUSTOMER ORDER CONFIRMATION EMAIL SENDER ---
+async function sendCustomerOrderReceiptEmail(orderData) {
+  if (!orderData || !orderData.customer || !orderData.customer.email) {
+    console.log(`[CUSTOMER ORDER EMAIL] No customer email provided for order ${orderData.orderRef}`);
+    return { sent: false, message: 'No customer email provided' };
+  }
+
+  const customerEmail = orderData.customer.email.trim();
+  if (!customerEmail.includes('@')) {
+    return { sent: false, message: 'Invalid customer email address' };
+  }
+
+  const customerName = orderData.customer.name || 'Valued Customer';
+  const finalTotal = Number(orderData.finalTotal || 0);
+  const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
+  const hasLogo = fs.existsSync(LOGO_PATH);
+
+  const itemsRows = (orderData.items || []).map((it, idx) => `
+    <tr>
+      <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #1e293b;">
+        <strong>${idx + 1}. ${it.name}</strong>
+      </td>
+      <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: center; color: #475569;">
+        x${it.quantity}
+      </td>
+      <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: right; font-weight: 700; color: #18422e;">
+        ₦${Number(it.price * it.quantity).toLocaleString('en-NG')}
+      </td>
+    </tr>
+  `).join('');
+
+  const deliveryNote = orderData.shippingMethod === 'nationwide'
+    ? 'Interstate Courier (Sorted with dispatch rider upon delivery)'
+    : (orderData.shippingMethod === 'international' ? 'International DHL / FedEx (Sorted with courier)' : `Local Courier (₦${Number(orderData.shippingFee || 0).toLocaleString('en-NG')})`);
+
+  const paymentNotice = orderData.paymentMethod === 'bank' ? `
+    <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 16px; margin: 20px 0;">
+      <div style="font-size: 13px; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 8px;">
+        💳 Direct Bank Transfer Payment Details
+      </div>
+      <div style="font-size: 14px; color: #1e293b; line-height: 1.7;">
+        <div><strong>Bank:</strong> Kuda Bank</div>
+        <div><strong>Account Number:</strong> <span style="font-family: monospace; font-size: 16px; font-weight: 800; color: #18422e; letter-spacing: 1px;">2043694030</span></div>
+        <div><strong>Account Name:</strong> Daniel Badmus / Aduke Alagbo</div>
+        <div><strong>Total Amount:</strong> <strong style="color: #15803d; font-size: 15px;">₦${finalTotal.toLocaleString('en-NG')}</strong></div>
+      </div>
+      <p style="font-size: 12px; color: #15803d; margin: 10px 0 0 0; line-height: 1.5;">
+        ${orderData.receiptProof && orderData.receiptProof.hasReceipt
+          ? '✓ <strong>Transfer receipt attached!</strong> Our store team is cross-checking our instant bank alerts to confirm credit. You will receive an official Payment Verified notification shortly.'
+          : '⚠️ Please transfer the exact amount of <strong>₦' + finalTotal.toLocaleString('en-NG') + '</strong> to the account above. Once verified, our team will dispatch your fresh remedies!'}
+      </p>
+    </div>
+  ` : `
+    <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 8px; padding: 14px; margin: 20px 0;">
+      <div style="font-size: 13px; font-weight: 700; color: #1e40af; margin-bottom: 4px;">WhatsApp Direct Order</div>
+      <div style="font-size: 13px; color: #1d4ed8; line-height: 1.5;">
+        Our herbalist will message you directly on WhatsApp to finalize your delivery schedule and answer any questions.
+      </div>
+    </div>
+  `;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, #102e20 0%, #18422e 100%); padding: 28px 20px; text-align: center; color: #ffffff;">
+        ${hasLogo ? `<img src="cid:adukeAlagboLogo" alt="Aduke Alagbo Logo" style="width: 78px; height: 78px; border-radius: 50%; object-fit: cover; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.25); display: block; margin: 0 auto 10px;">` : ''}
+        <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: 0.02em; color: #ffffff;">Aduke Alagbo</h1>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #cbd5e1;">Authentic Ancestral African Remedies</p>
+      </div>
+
+      <div style="padding: 24px;">
+        <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+        <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+          Thank you for ordering with <strong>Aduke Alagbo</strong>! We have received your order and your fresh ancestral remedies are currently being prepared with pure, organic wildcrafted herbs.
+        </p>
+
+        <div style="background: #f8fafc; border-left: 4px solid #18422e; padding: 14px 16px; border-radius: 6px; margin: 20px 0;">
+          <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 700;">Order Reference</div>
+          <div style="font-size: 22px; font-weight: 800; color: #18422e; font-family: monospace;">${orderData.orderRef}</div>
+          <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Placed on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+        </div>
+
+        ${paymentNotice}
+
+        <!-- Items Ordered -->
+        <h3 style="font-size: 14px; color: #18422e; margin: 20px 0 10px 0; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 6px;">
+          Items in Your Package
+        </h3>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px;">
+          <thead>
+            <tr style="background: #f1f5f9;">
+              <th style="padding: 8px 12px; text-align: left; font-size: 12px; color: #475569; text-transform: uppercase;">Product</th>
+              <th style="padding: 8px 12px; text-align: center; font-size: 12px; color: #475569; text-transform: uppercase;">Qty</th>
+              <th style="padding: 8px 12px; text-align: right; font-size: 12px; color: #475569; text-transform: uppercase;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsRows}
+          </tbody>
+        </table>
+
+        <!-- Total Calculation -->
+        <div style="background: #f8fafc; padding: 14px 18px; border-radius: 8px; margin-bottom: 22px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px; color: #64748b; margin-bottom: 4px;">
+            <span>Subtotal:</span>
+            <span>₦${Number(orderData.subtotal || 0).toLocaleString('en-NG')}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 13px; color: #64748b; margin-bottom: 4px;">
+            <span>Delivery:</span>
+            <span>${deliveryNote}</span>
+          </div>
+          ${orderData.discount > 0 ? `
+          <div style="display: flex; justify-content: space-between; font-size: 13px; color: #15803d; margin-bottom: 4px;">
+            <span>Discount:</span>
+            <span>-₦${Number(orderData.discount).toLocaleString('en-NG')}</span>
+          </div>
+          ` : ''}
+          <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; color: #18422e; border-top: 1.5px dashed #cbd5e1; padding-top: 8px; margin-top: 6px;">
+            <span>Total:</span>
+            <span style="color: #15803d;">₦${finalTotal.toLocaleString('en-NG')}</span>
+          </div>
+        </div>
+
+        <!-- Destination -->
+        <div style="background: #f8fafc; border-left: 4px solid #d4af37; padding: 14px 16px; border-radius: 6px; margin-bottom: 22px;">
+          <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 4px;">Delivery Address</div>
+          <div style="font-size: 14px; color: #1e293b; font-weight: 600;">${orderData.customer.address}</div>
+          <div style="font-size: 13px; color: #475569; margin-top: 2px;">Phone: <strong>${orderData.customer.phone}</strong></div>
+        </div>
+
+        <p style="font-size: 13px; color: #475569; line-height: 1.5; margin-bottom: 16px;">
+          If you have questions about preparation, dosage, or order status, reach out to Aduke Alagbo directly on WhatsApp at 
+          <a href="https://wa.me/2349055126388" style="color: #18422e; font-weight: 700; text-decoration: underline;">+234 905 512 6388</a>.
+        </p>
+
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0 16px 0;">
+        <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+          Aduke Alagbo • Authentic Ancestral Remedies • Abeokuta, Ogun State, Nigeria
+        </p>
+      </div>
+    </div>
+  `;
+
+  const emailAttachments = hasLogo ? [
+    {
+      filename: 'aduke-alagbo-logo.jpeg',
+      path: LOGO_PATH,
+      cid: 'adukeAlagboLogo'
+    }
+  ] : [];
+
+  const mailOptions = {
+    from: `"Aduke Alagbo" <${SMTP_USER}>`,
+    to: customerEmail,
+    subject: `Order Confirmation: Your Aduke Alagbo Order (${orderData.orderRef}) Has Been Received! 🌿`,
+    html: htmlContent,
+    attachments: emailAttachments
+  };
+
+  const dispatchResult = await sendMailWithFallback(mailOptions);
+  if (dispatchResult.sent) {
+    console.log(`[CUSTOMER ORDER EMAIL] Receipt delivered to ${customerEmail} via ${dispatchResult.method}`);
+    return { sent: true, method: dispatchResult.method };
+  }
+
+  return { sent: false, error: dispatchResult.error };
+}
+
+// --- STORE OWNER ORDER ALERT SENDER ---
+async function sendOwnerOrderAlert(orderData, ownerEmail) {
+  const targetEmail = (ownerEmail || DEFAULT_OWNER_EMAIL).trim();
   const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
 
@@ -289,12 +528,13 @@ async function sendOrderNotificationEmail(orderData) {
     : (orderData.shippingMethod === 'international' ? 'International DHL / FedEx (Sorted with courier)' : `Local Courier (₦${Number(orderData.shippingFee || 0).toLocaleString('en-NG')})`);
 
   const paymentLabel = orderData.paymentMethod === 'bank' ? 'Direct Bank Transfer (Kuda Bank)' : 'WhatsApp Direct Order';
+  const custPhoneClean = (orderData.customer && orderData.customer.phone) ? orderData.customer.phone.replace(/[^0-9+]/g, '') : '';
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
-      <!-- Brand Header with Logo Image -->
+      <!-- Brand Header -->
       <div style="background: linear-gradient(135deg, #102e20 0%, #18422e 100%); padding: 26px 20px; text-align: center; color: #ffffff;">
-        ${hasLogo ? `<img src="cid:storeLogo" alt="Aduke Alagbo Logo" style="width: 78px; height: 78px; border-radius: 50%; object-fit: cover; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.25); display: block; margin: 0 auto 10px;">` : ''}
+        ${hasLogo ? `<img src="cid:adukeAlagboLogo" alt="Aduke Alagbo Logo" style="width: 78px; height: 78px; border-radius: 50%; object-fit: cover; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.25); display: block; margin: 0 auto 10px;">` : ''}
         <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: 0.02em; color: #ffffff;">Aduke Alagbo</h1>
         <p style="margin: 4px 0 0 0; font-size: 13px; color: #cbd5e1;">Official Store Order Notification</p>
       </div>
@@ -303,10 +543,10 @@ async function sendOrderNotificationEmail(orderData) {
         <div style="background: #f8fafc; border-left: 4px solid #18422e; padding: 14px 16px; border-radius: 6px; margin-bottom: 20px;">
           <div style="font-size: 13px; color: #64748b; text-transform: uppercase; font-weight: 700;">Order Reference</div>
           <div style="font-size: 20px; font-weight: 800; color: #18422e; font-family: monospace;">${orderData.orderRef}</div>
-          <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Placed on ${new Date().toLocaleDateString('en-GB')}</div>
+          <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Placed on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
         </div>
 
-        <!-- Customer Details Box -->
+        <!-- Customer Delivery Details -->
         <h3 style="font-size: 14px; color: #18422e; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 6px;">
           Customer Delivery Information
         </h3>
@@ -317,11 +557,16 @@ async function sendOrderNotificationEmail(orderData) {
           </tr>
           <tr>
             <td style="color: #64748b; vertical-align: top;"><strong>Phone / WhatsApp:</strong></td>
-            <td style="color: #1e293b; font-weight: 700;"><a href="tel:${orderData.customer ? orderData.customer.phone : ''}" style="color: #18422e; text-decoration: none;">${orderData.customer ? orderData.customer.phone : ''}</a></td>
+            <td style="color: #1e293b; font-weight: 700;">
+              <a href="tel:${custPhoneClean}" style="color: #18422e; text-decoration: none;">${orderData.customer ? orderData.customer.phone : ''}</a>
+              ${custPhoneClean ? ` &bull; <a href="https://wa.me/${custPhoneClean.replace(/^\+/, '')}" style="color: #15803d; text-decoration: underline; font-size: 12px;">Chat on WhatsApp</a>` : ''}
+            </td>
           </tr>
           <tr>
             <td style="color: #64748b; vertical-align: top;"><strong>Email:</strong></td>
-            <td style="color: #1e293b;">${(orderData.customer && orderData.customer.email) || 'Not provided'}</td>
+            <td style="color: #1e293b;">
+              ${(orderData.customer && orderData.customer.email) ? `<a href="mailto:${orderData.customer.email}" style="color: #18422e;">${orderData.customer.email}</a>` : 'Not provided'}
+            </td>
           </tr>
           <tr>
             <td style="color: #64748b; vertical-align: top;"><strong>Delivery Address:</strong></td>
@@ -379,7 +624,14 @@ async function sendOrderNotificationEmail(orderData) {
           <div style="font-size: 13px; font-weight: 700; color: #166534; margin-bottom: 4px;">
             Payment Method: ${paymentLabel}
           </div>
-          <div style="font-size: 12px; color: #15803d; line-height: 1.5;">
+          ${(orderData.senderDetails && (orderData.senderDetails.bank || orderData.senderDetails.name || orderData.senderDetails.sessionId)) ? `
+          <div style="font-size: 13px; color: #1e293b; margin: 8px 0; line-height: 1.5;">
+            ${orderData.senderDetails.bank ? `<div>• <strong>Customer Bank:</strong> ${orderData.senderDetails.bank}</div>` : ''}
+            ${orderData.senderDetails.name ? `<div>• <strong>Sender Name:</strong> ${orderData.senderDetails.name}</div>` : ''}
+            ${orderData.senderDetails.sessionId ? `<div>• <strong>Session ID / Ref:</strong> ${orderData.senderDetails.sessionId}</div>` : ''}
+          </div>
+          ` : ''}
+          <div style="font-size: 12px; color: #15803d; line-height: 1.5; margin-top: 6px;">
             ${orderData.paymentMethod === 'bank'
               ? '<strong>Action Required:</strong> Check your instant Kuda Bank alert to verify credit of ₦' + Number(orderData.finalTotal || 0).toLocaleString('en-NG') + ' before dispatching package.'
               : 'Customer selected direct WhatsApp order confirmation.'}
@@ -413,27 +665,72 @@ async function sendOrderNotificationEmail(orderData) {
     }
   }
 
-  const subject = `New Order: ${orderData.customer ? orderData.customer.name : 'Customer'} (${orderData.orderRef}) - Aduke Alagbo`;
+  const subject = `🌿 New Order: ${orderData.customer ? orderData.customer.name : 'Customer'} (${orderData.orderRef}) - Aduke Alagbo`;
 
-  if (transporter) {
-    try {
-      await transporter.sendMail({
-        from: `"Aduke Alagbo Store" <${process.env.SMTP_USER}>`,
-        to: ownerEmail,
-        subject: subject,
-        html: htmlContent,
-        attachments: emailAttachments
-      });
-      console.log(`[ORDER EMAIL] Order ${orderData.orderRef} notification sent via SMTP to ${ownerEmail}`);
-      return { sent: true, method: 'smtp' };
-    } catch (err) {
-      console.error(`[ORDER EMAIL ERROR] Failed via SMTP:`, err.message);
-      return { sent: false, error: err.message, method: 'smtp_failed' };
-    }
+  const mailOptions = {
+    from: `"Aduke Alagbo Store" <${SMTP_USER}>`,
+    to: targetEmail,
+    subject: subject,
+    html: htmlContent,
+    attachments: emailAttachments
+  };
+
+  const dispatchResult = await sendMailWithFallback(mailOptions);
+  if (dispatchResult.sent) {
+    console.log(`[ORDER OWNER ALERT] Notification delivered to ${targetEmail} via ${dispatchResult.method}`);
+    return { sent: true, method: dispatchResult.method };
   }
 
-  console.log(`[ORDER EMAIL SIMULATION] New order ${orderData.orderRef} recorded for ${ownerEmail}`);
-  return { sent: false, method: 'simulated' };
+  return { sent: false, error: dispatchResult.error };
+}
+
+// In-memory deduplication map (orderRef -> timestamp)
+const recentlyNotifiedOrders = new Map();
+
+// --- MASTER ORDER NOTIFICATION DISPATCHER ---
+// Sends notifications to BOTH store owner AND buyer simultaneously
+async function sendOrderNotificationEmail(orderData) {
+  if (!orderData || !orderData.orderRef) {
+    return { sent: false, message: 'Invalid order data' };
+  }
+
+  const cleanRef = (orderData.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
+  const now = Date.now();
+
+  // Deduplication guard: ignore duplicate calls for the same order within 2 minutes
+  if (recentlyNotifiedOrders.has(cleanRef)) {
+    const lastSent = recentlyNotifiedOrders.get(cleanRef);
+    if (now - lastSent < 120000) {
+      console.log(`[ORDER NOTIFY] Order ${orderData.orderRef} already notified within last 2 minutes. Skipping duplicate.`);
+      return { sent: true, skippedDuplicate: true, orderRef: orderData.orderRef };
+    }
+  }
+  recentlyNotifiedOrders.set(cleanRef, now);
+
+  const auth = getAuthData();
+  const ownerEmail = (auth && auth.adminEmail) ? auth.adminEmail : DEFAULT_OWNER_EMAIL;
+
+  console.log(`[ORDER DISPATCH] Sending emails for order ${orderData.orderRef}...`);
+  console.log(`[ORDER DISPATCH] Store Owner: ${ownerEmail}`);
+  console.log(`[ORDER DISPATCH] Buyer: ${(orderData.customer && orderData.customer.email) || 'None provided'}`);
+
+  const [ownerRes, customerRes] = await Promise.allSettled([
+    sendOwnerOrderAlert(orderData, ownerEmail),
+    sendCustomerOrderReceiptEmail(orderData)
+  ]);
+
+  const ownerSent = ownerRes.status === 'fulfilled' && ownerRes.value && ownerRes.value.sent;
+  const customerSent = customerRes.status === 'fulfilled' && customerRes.value && customerRes.value.sent;
+
+  console.log(`[ORDER DISPATCH RESULT] ${orderData.orderRef} -> Owner: ${ownerSent ? 'DELIVERED ✓' : 'FAILED ✗'}, Buyer: ${customerSent ? 'DELIVERED ✓' : 'SKIPPED/NO_EMAIL'}`);
+
+  return {
+    sent: ownerSent || customerSent,
+    ownerEmailSent: ownerSent,
+    customerEmailSent: customerSent,
+    ownerResult: ownerRes.status === 'fulfilled' ? ownerRes.value : { error: ownerRes.reason?.message },
+    customerResult: customerRes.status === 'fulfilled' ? customerRes.value : { error: customerRes.reason?.message }
+  };
 }
 
 // --- INITIALIZE AUTH STORAGE ---
@@ -458,7 +755,7 @@ function getAuthData() {
   try {
     const raw = fs.readFileSync(AUTH_FILE, 'utf-8');
     const data = JSON.parse(raw);
-    if (!data.adminEmail) {
+    if (!data.adminEmail || data.adminEmail === "seller@adukealagbo.com") {
       data.adminEmail = process.env.ADMIN_EMAIL || DEFAULT_OWNER_EMAIL;
       saveAuthData(data);
     }
@@ -1317,6 +1614,12 @@ app.post('/api/orders', (req, res) => {
   }
 
   const saved = saveNewServerOrder(orderData);
+
+  // Automatically trigger email notifications in background (with deduplication guard)
+  sendOrderNotificationEmail(orderData).catch(err => {
+    console.warn(`[ORDER EMAIL BG ERROR]: ${err.message}`);
+  });
+
   res.json({ success: true, order: saved, message: `Order ${orderData.orderRef} placed and recorded successfully!` });
 });
 
@@ -1326,7 +1629,6 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
     return { sent: false, message: 'No customer email provided for this order' };
   }
 
-  const transporter = getEmailTransporter();
   const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
 
@@ -1458,28 +1760,26 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
     }
   ] : [];
 
-  if (transporter) {
-    try {
-      await transporter.sendMail({
-        from: `"Aduke Alagbo" <${process.env.SMTP_USER}>`,
-        to: customerEmail,
-        subject: `Payment Confirmed: Your Aduke Alagbo Order (${orderData.orderRef}) is Being Prepared! ✓`,
-        html: htmlContent,
-        attachments: emailAttachments
-      });
-      console.log(`[CUSTOMER CONFIRM EMAIL] Sent directly via SMTP to ${customerEmail}`);
-      return { sent: true };
-    } catch (err) {
-      console.error(`[CUSTOMER CONFIRM EMAIL ERROR] SMTP failed:`, err.message);
-    }
+  const mailOptions = {
+    from: `"Aduke Alagbo" <${SMTP_USER}>`,
+    to: customerEmail,
+    subject: `Payment Confirmed: Your Aduke Alagbo Order (${orderData.orderRef}) is Being Prepared! ✓`,
+    html: htmlContent,
+    attachments: emailAttachments
+  };
+
+  const dispatchResult = await sendMailWithFallback(mailOptions);
+  if (dispatchResult.sent) {
+    console.log(`[CUSTOMER CONFIRM EMAIL] Delivered to ${customerEmail} via ${dispatchResult.method}`);
+    return { sent: true, method: dispatchResult.method };
   }
 
-  // Simulated email dispatch notice when SMTP credentials are not yet entered in .env
-  console.log(`[CUSTOMER CONFIRM EMAIL - SIMULATION] Prepared official confirmation email for ${customerEmail} (Order: ${orderData.orderRef}, Total: ₦${finalTotal.toLocaleString('en-NG')}).`);
+  // Fallback notice
+  console.log(`[CUSTOMER CONFIRM EMAIL - FALLBACK] Email dispatch attempted for ${customerEmail} (Order: ${orderData.orderRef}). Result: ${dispatchResult.error}`);
   return { 
     sent: false, 
     simulated: true, 
-    message: `Payment confirmed. Confirmation email generated for ${customerEmail}. (Set SMTP_USER and SMTP_PASS in .env for live Gmail delivery).` 
+    message: `Payment confirmed for ${customerEmail}. Dispatch result: ${dispatchResult.error}` 
   };
 }
 

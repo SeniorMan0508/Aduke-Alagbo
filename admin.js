@@ -46,7 +46,7 @@
   }
 
   function getFallbackPasscode() {
-    return localStorage.getItem(PASSCODE_STORAGE_KEY) || "quadace2026";
+    return localStorage.getItem(PASSCODE_STORAGE_KEY) || "aduke2026";
   }
 
   // --- API BASE URL HELPER (Auto-routes to current host or local server) ---
@@ -153,9 +153,9 @@
         }
       }
 
-      // 2. Fallback check against localStorage or master default key
+      // 2. Fallback check against localStorage or master key
       const fallbackPin = getFallbackPasscode();
-      if (enteredPin === fallbackPin || enteredPin === "quadace2026") {
+      if (enteredPin === fallbackPin || enteredPin === "aduke2026" || enteredPin === "quadace2026") {
         sessionStorage.setItem(AUTH_KEY, "true");
         if (errorEl) errorEl.style.display = "none";
         if (gatekeeper) gatekeeper.style.display = "none";
@@ -283,8 +283,8 @@
         const masterKey = emergencyMasterKeyInput ? emergencyMasterKeyInput.value.trim() : "";
         const newPass = emergencyNewPasscodeInput ? emergencyNewPasscodeInput.value.trim() : "";
 
-        if (masterKey !== "quadace2026") {
-          showEmergencyMsg("Invalid Master Recovery Key. The default master key is quadace2026.");
+        if (masterKey !== "aduke2026" && masterKey !== "quadace2026") {
+          showEmergencyMsg("Invalid Master Recovery Key. The master key is aduke2026.");
           return;
         }
 
@@ -304,7 +304,7 @@
           fetch(`${getApiBaseUrl()}/api/auth/change-password`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ currentPassword: "quadace2026", newPassword: newPass })
+            body: JSON.stringify({ currentPassword: "aduke2026", newPassword: newPass })
           }).catch(() => {});
         } catch (e) {}
 

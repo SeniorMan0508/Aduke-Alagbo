@@ -24,7 +24,7 @@ This launches the server at **`http://localhost:3000`**:
 The Admin Dashboard is **100% invisible to regular customers**:
 - **No public links**: There are zero "Admin" links in the navigation or footer.
 - **Secret Shortcut**: Press **`Ctrl + Shift + A`** on the keyboard while anywhere on the site to jump directly to the Admin login.
-- **Initial Default Passcode**: `quadace2026`
+- **Initial Default Passcode / Master Recovery Key**: `aduke2026`
 - **Owner Registered Recovery Email**: `badmusdaniel0508@gmail.com`
 
 > [!IMPORTANT]

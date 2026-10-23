@@ -29,18 +29,22 @@
     return symbol + Number(amount).toLocaleString("en-NG");
   }
 
-  // --- HELPER: API BASE URL (Seamlessly supports laptop localhost, phone on Wi-Fi, and Netlify / Render) ---
-  const CLOUD_API_BASE = "https://quad-ace-herbs.onrender.com";
-
+  // --- HELPER: API BASE URL (Auto-routes to current host or local server) ---
   function getApiBaseUrl() {
-    if (typeof window === "undefined") return CLOUD_API_BASE;
-    if (window.location.hostname.includes("onrender.com")) {
+    if (typeof window === "undefined") return "";
+    // If hosted online (Render, Railway, or custom domain):
+    if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" && window.location.protocol.startsWith("http")) {
       return "";
     }
-    if (window.location.hostname === "localhost" && window.location.port === "3000") {
+    // If accessed directly from local port 3000 where server is running:
+    if (window.location.port === "3000") {
       return "";
     }
-    return CLOUD_API_BASE;
+    // In local development (Live Server port 5500, or file://):
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.protocol === "file:") {
+      return "http://localhost:3000";
+    }
+    return "";
   }
 
   // --- LOCAL STORAGE CART PERSISTENCE ---
@@ -1411,8 +1415,16 @@
     const transferSessionId = document.getElementById("transferSessionId") ? document.getElementById("transferSessionId").value.trim() : "";
 
     if (!custName || !custPhone || !custAddress) {
-      showToast("Please complete your delivery details first.", "⚠️");
+      showToast("Please complete your delivery name, phone, and address first.", "⚠️");
       setCheckoutStep(1);
+      return;
+    }
+
+    if (!custEmail || !custEmail.includes("@")) {
+      showToast("Please enter a valid email address so we can send your order confirmation and dispatch receipt.", "⚠️");
+      setCheckoutStep(1);
+      const emailInput = document.getElementById("custEmail");
+      if (emailInput) emailInput.focus();
       return;
     }
 
@@ -1428,9 +1440,9 @@
       }
     }
 
-    // Generate unique Order Reference
+    // Generate unique Order Reference (#AA- prefix for Aduke Alagbo)
     const randomDigits = Math.floor(10000 + Math.random() * 90000);
-    const orderRef = `#QA-${randomDigits}`;
+    const orderRef = `#AA-${randomDigits}`;
 
     const subtotal = getCartSubtotal() - state.discountAmount;
     let shippingFee = 0;
@@ -1550,9 +1562,7 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     }
 
     // POST TO BACKEND ORDER API
-    const orderApiUrl = (window.location.hostname.includes("onrender.com"))
-      ? "https://quad-ace-herbs.onrender.com/api/orders"
-      : `${getApiBaseUrl()}/api/orders`;
+    const orderApiUrl = `${getApiBaseUrl()}/api/orders`;
 
     fetch(orderApiUrl, {
       method: "POST",
@@ -1563,11 +1573,8 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     .then(data => console.log("[ORDER TRACKING] Order synced to backend API:", data))
     .catch(err => console.warn("[ORDER TRACKING] Backend sync:", err));
 
-    // DEDICATED EMAIL DISPATCH WITH EMBEDDED BRAND LOGO & RICH ORDER STYLING:
-    // Netlify Serverless Function uses port 587 without cloud SMTP blocking
-    const emailEndpoint = (window.location.hostname === "localhost" && window.location.port === "3000")
-      ? "/api/orders/notify-email"
-      : "https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email";
+    // DISPATCH NEW ORDER NOTIFICATION EMAIL TO STORE OWNER
+    const emailEndpoint = `${getApiBaseUrl()}/api/orders/notify-email`;
 
     fetch(emailEndpoint, {
       method: "POST",
@@ -1577,12 +1584,7 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     .then(res => res.json())
     .then(data => console.log("[ORDER NOTIFICATION] Branded order email sent:", data))
     .catch(err => {
-      console.warn("[ORDER NOTIFICATION] Primary email dispatch failed, trying direct Netlify:", err);
-      fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderData)
-      }).catch(e => console.warn("[ORDER NOTIFICATION] Final fallback failed:", e));
+      console.warn("[ORDER NOTIFICATION] Dispatch attempt:", err);
     });
 
     // Close Checkout Modal & Open Receipt

@@ -776,21 +776,28 @@ const DEFAULT_STORE_ORDERS = [
 ];
 
 /**
+ * Helper to normalize order references for robust comparison (#QA-123 vs QA-123)
+ */
+function normalizeOrderRef(ref) {
+  return (ref || "").toString().trim().replace(/^#/, "").toLowerCase();
+}
+
+/**
  * Retrieve all orders recorded on the website.
  */
 function getStoreOrders() {
   try {
     const raw = localStorage.getItem(QUADACE_STORAGE_KEYS.ORDERS);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
   } catch (e) {
     console.warn("Could not read orders from localStorage", e);
   }
-  // Initialize with authentic seed orders so the owner sees rich data immediately
+  // Initialize with authentic seed orders only on very first visit
   try {
     localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(DEFAULT_STORE_ORDERS));
   } catch (e) {}
@@ -804,18 +811,39 @@ function saveStoreOrder(order) {
   if (!order || !order.orderRef) return false;
   let orders = getStoreOrders();
 
+  const targetRef = normalizeOrderRef(order.orderRef);
+
   // If already exists, update it; otherwise add to the very top (newest first)
-  const existingIdx = orders.findIndex(o => o.orderRef === order.orderRef);
+  const existingIdx = orders.findIndex(o => normalizeOrderRef(o.orderRef) === targetRef);
   if (existingIdx >= 0) {
     orders[existingIdx] = { ...orders[existingIdx], ...order };
   } else {
     orders.unshift(order);
   }
 
+  // Safe localStorage persistence (protect from oversized base64 images that exceed quota)
   try {
     localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(orders));
   } catch (e) {
-    console.error("Failed to save order to localStorage:", e);
+    console.warn("Large receipt image in orders; stripping image payload for localStorage quota safety:", e.message);
+    const quotaSafeOrders = orders.map(o => {
+      if (o.receiptProof && o.receiptProof.dataUrl && o.receiptProof.dataUrl.length > 50000) {
+        return {
+          ...o,
+          receiptProof: {
+            ...o.receiptProof,
+            hasReceipt: true,
+            dataUrl: "" // Server holds full image, client keeps confirmation flag
+          }
+        };
+      }
+      return o;
+    });
+    try {
+      localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(quotaSafeOrders));
+    } catch (err) {
+      console.error("Critical: Could not save order to localStorage:", err);
+    }
   }
 
   // Update inventory remaining and units sold for each product in this order
@@ -837,8 +865,9 @@ function saveStoreOrder(order) {
  * Update the status of an existing customer order.
  */
 function updateStoreOrderStatus(orderRef, newStatus, note = "") {
+  const targetRef = normalizeOrderRef(orderRef);
   const orders = getStoreOrders();
-  const order = orders.find(o => o.orderRef === orderRef);
+  const order = orders.find(o => normalizeOrderRef(o.orderRef) === targetRef);
   if (!order) return false;
 
   order.status = newStatus;
@@ -864,11 +893,27 @@ function updateStoreOrderStatus(orderRef, newStatus, note = "") {
  * Delete an order from store records.
  */
 function deleteStoreOrder(orderRef) {
+  if (!orderRef) return false;
+  const targetRef = normalizeOrderRef(orderRef);
   let orders = getStoreOrders();
-  orders = orders.filter(o => o.orderRef !== orderRef);
+  orders = orders.filter(o => normalizeOrderRef(o.orderRef) !== targetRef);
+
   try {
     localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(orders));
-  } catch (e) {}
+
+    // Persist deleted ref list so server sync does not resurrect deleted orders
+    let deletedRefs = [];
+    try {
+      deletedRefs = JSON.parse(localStorage.getItem("aduke_deleted_orders") || "[]");
+    } catch (e) {}
+    if (!deletedRefs.includes(targetRef)) deletedRefs.push(targetRef);
+    if (!deletedRefs.includes(orderRef)) deletedRefs.push(orderRef);
+    localStorage.setItem("aduke_deleted_orders", JSON.stringify(deletedRefs));
+
+    window.dispatchEvent(new CustomEvent("quadace_order_deleted", { detail: { orderRef } }));
+  } catch (e) {
+    console.error("Failed to delete order from localStorage:", e);
+  }
   return true;
 }
 

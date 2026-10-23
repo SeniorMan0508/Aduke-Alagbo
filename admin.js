@@ -49,23 +49,22 @@
     return localStorage.getItem(PASSCODE_STORAGE_KEY) || "quadace2026";
   }
 
-  // --- API BASE URL HELPER ---
-  const CLOUD_API_BASE = "https://quad-ace-herbs.onrender.com";
-  const NETLIFY_RESET_FN = "https://quad-ace-herbs.netlify.app/.netlify/functions/send-reset-email";
-
+  // --- API BASE URL HELPER (Auto-routes to current host or local server) ---
   function getApiBaseUrl() {
-    if (typeof window === "undefined") return CLOUD_API_BASE;
-    // If running on Render or custom domain with backend
-    if (window.location.hostname.includes("onrender.com")) {
+    if (typeof window === "undefined") return "";
+    // If hosted online (Render, Railway, or custom domain):
+    if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" && window.location.protocol.startsWith("http")) {
       return "";
     }
-    // If accessed directly from local port 3000 where server is running
-    if (window.location.hostname === "localhost" && window.location.port === "3000") {
+    // If accessed directly from local port 3000 where server is running:
+    if (window.location.port === "3000") {
       return "";
     }
-    // In local development (file://, Live Server port 5500, or any client host):
-    // Route API requests directly to the live Render cloud backend
-    return CLOUD_API_BASE;
+    // In local development (Live Server port 5500, or file://):
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.protocol === "file:") {
+      return "http://localhost:3000";
+    }
+    return "";
   }
 
   // --- PASSCODE GATEKEEPER ---
@@ -1749,50 +1748,43 @@
     }
 
     const orders = typeof getStoreOrders === "function" ? getStoreOrders() : [];
-    const targetOrder = orders.find(o => o.orderRef === orderRef || o.orderRef === `#${orderRef}`);
+    const targetRef = (orderRef || "").toString().trim().replace(/^#/, "").toLowerCase();
+    const targetOrder = orders.find(o => (o.orderRef || "").toString().trim().replace(/^#/, "").toLowerCase() === targetRef);
 
     // If admin confirms payment, automatically dispatch official confirmation email to the buyer
-    if (newStatus === "verified" && targetOrder && targetOrder.customer && targetOrder.customer.email) {
-      // Dedicated Netlify endpoint with automatic fallback to notify-email
-      const confirmEndpoint = "https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email";
-
-      fetch(confirmEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderData: targetOrder })
-      })
-      .then(res => {
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        return res.json();
-      })
-      .then(data => {
-        console.log("[PAYMENT CONFIRMATION] Customer email dispatched:", data);
-        showAdminToast(`Payment confirmed! Confirmation email sent to ${targetOrder.customer.email} ✉️`, "✓");
-      })
-      .catch(err => {
-        console.warn("[PAYMENT CONFIRMATION] Primary dispatch failed, trying notify-email fallback:", err);
-        fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email", {
+    if (newStatus === "verified" && targetOrder) {
+      if (targetOrder.customer && targetOrder.customer.email && targetOrder.customer.email.includes("@")) {
+        const customerEmail = targetOrder.customer.email.trim();
+        fetch(`${getApiBaseUrl()}/api/orders/confirm-payment-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "customer_payment_confirmed",
-            orderData: targetOrder,
-            ...targetOrder
-          })
+          body: JSON.stringify({ orderData: targetOrder })
         })
         .then(res => res.json())
         .then(data => {
-          console.log("[PAYMENT CONFIRMATION FALLBACK] Dispatched via notify-email:", data);
-          showAdminToast(`Payment confirmed! Confirmation email sent to ${targetOrder.customer.email} ✉️`, "✓");
+          if (data.sent) {
+            console.log("[PAYMENT CONFIRMATION] Customer email delivered:", data);
+            showAdminToast(`Payment confirmed! Confirmation email sent to ${customerEmail} ✉️`, "✓");
+          } else if (data.simulated) {
+            console.log("[PAYMENT CONFIRMATION] Simulated delivery:", data);
+            showAdminToast(`Payment verified! (Receipt logged to server for ${customerEmail})`, "✓");
+          } else {
+            showAdminToast(`Payment verified! Email notice: ${data.message || 'Queued'}`, "ℹ️");
+          }
         })
-        .catch(e => console.warn("[PAYMENT CONFIRMATION] Fallback failed:", e));
-      });
+        .catch(err => {
+          console.warn("[PAYMENT CONFIRMATION] Email call error:", err);
+          showAdminToast(`Payment verified! (Email dispatch attempted for ${customerEmail})`, "✓");
+        });
+      } else {
+        showAdminToast(`Payment verified! ⚠️ Note: Customer did not provide an email address for receipt delivery.`, "ℹ️");
+      }
     }
 
     // Sync to backend API
     try {
       const cleanRef = orderRef.replace(/^#/, '');
-      await fetch(`${getApiBaseUrl()}/api/orders/${cleanRef}/status`, {
+      await fetch(`${getApiBaseUrl()}/api/orders/${encodeURIComponent(cleanRef)}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus, note })
@@ -1833,18 +1825,40 @@
 
   // Delete order
   async function deleteOrder(orderRef) {
+    if (!orderRef) return;
+    const cleanRef = orderRef.replace(/^#/, '');
+
+    // 1. Remove from in-memory tracking sets
+    lastKnownOrderRefs.delete(orderRef);
+    lastKnownOrderRefs.delete(`#${cleanRef}`);
+    lastKnownOrderRefs.delete(cleanRef);
+
+    // 2. Remove from local store records
     if (typeof deleteStoreOrder === "function") {
       deleteStoreOrder(orderRef);
     }
 
-    try {
-      const cleanRef = orderRef.replace(/^#/, '');
-      await fetch(`${getApiBaseUrl()}/api/orders/${cleanRef}`, { method: "DELETE" });
-    } catch (e) {}
+    // 3. Close modal if this order is currently open
+    const modal = document.getElementById("adminOrderDetailModal");
+    if (modal && currentActiveOrder) {
+      const activeClean = (currentActiveOrder.orderRef || "").replace(/^#/, '');
+      if (activeClean === cleanRef) {
+        modal.style.display = "none";
+      }
+    }
 
-    showAdminToast(`Order ${orderRef} deleted.`, "🗑️");
+    // 4. Update UI immediately
     renderOrdersTable();
+    renderInventoryTracker();
     updateStats();
+    showAdminToast(`Order ${orderRef} deleted.`, "🗑️");
+
+    // 5. Delete on backend API
+    try {
+      await fetch(`${getApiBaseUrl()}/api/orders/${encodeURIComponent(cleanRef)}`, { method: "DELETE" });
+    } catch (e) {
+      console.warn("Backend order delete error:", e);
+    }
   }
 
   // Simulate an incoming customer purchase (for testing and owner demonstration)
@@ -1934,7 +1948,7 @@
     if (container) container.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  // Sync Orders from Server
+  // Sync Orders from Server (Smart merge without reviving deleted orders)
   async function syncOrdersFromServer() {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/orders`);
@@ -1942,21 +1956,56 @@
         const data = await res.json();
         if (data.success && Array.isArray(data.orders)) {
           const localOrders = (typeof getStoreOrders === "function") ? getStoreOrders() : [];
-          
+
+          let deletedRefs = [];
+          try {
+            deletedRefs = JSON.parse(localStorage.getItem("aduke_deleted_orders") || "[]");
+          } catch (e) {}
+
+          const norm = r => (r || "").toString().trim().replace(/^#/, "").toLowerCase();
+
+          // Filter out orders that the owner has explicitly deleted
+          const activeServerOrders = data.orders.filter(so => {
+            const cr = norm(so.orderRef);
+            return !deletedRefs.includes(cr) && !deletedRefs.includes(so.orderRef);
+          });
+
+          // Smart merge: keep local orders that might be newly created or not yet synced to server
+          const ordersMap = new Map();
+          activeServerOrders.forEach(so => {
+            ordersMap.set(norm(so.orderRef), so);
+          });
+
+          localOrders.forEach(lo => {
+            const lr = norm(lo.orderRef);
+            if (!deletedRefs.includes(lr) && !ordersMap.has(lr)) {
+              ordersMap.set(lr, lo);
+              // Push local order to server so backend has it too!
+              fetch(`${getApiBaseUrl()}/api/orders`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(lo)
+              }).catch(() => {});
+            }
+          });
+
+          const merged = Array.from(ordersMap.values()).sort((a, b) => {
+            return new Date(b.createdAt || b.timestamp || 0) - new Date(a.createdAt || a.timestamp || 0);
+          });
+
           // Check for brand new orders that arrived
           let hasNewOrder = false;
           let latestNew = null;
 
-          data.orders.forEach(srvOrd => {
-            if (lastKnownOrderRefs.size > 0 && !lastKnownOrderRefs.has(srvOrd.orderRef)) {
+          merged.forEach(ord => {
+            if (lastKnownOrderRefs.size > 0 && !lastKnownOrderRefs.has(ord.orderRef)) {
               hasNewOrder = true;
-              latestNew = srvOrd;
+              latestNew = ord;
             }
-            lastKnownOrderRefs.add(srvOrd.orderRef);
+            lastKnownOrderRefs.add(ord.orderRef);
           });
 
-          // Merge server orders with local store
-          localStorage.setItem("quadace_orders", JSON.stringify(data.orders));
+          localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(merged));
 
           if (hasNewOrder && latestNew) {
             playOrderChime();
@@ -2100,6 +2149,18 @@
     if (printSlipBtn) {
       printSlipBtn.addEventListener("click", () => {
         window.print();
+      });
+    }
+
+    // Delete order from detail modal
+    const modalDeleteBtn = document.getElementById("modalDeleteOrderBtn");
+    if (modalDeleteBtn) {
+      modalDeleteBtn.addEventListener("click", () => {
+        if (currentActiveOrder && currentActiveOrder.orderRef) {
+          if (confirm(`Are you sure you want to delete order ${currentActiveOrder.orderRef}? This will permanently remove it from tracking.`)) {
+            deleteOrder(currentActiveOrder.orderRef);
+          }
+        }
       });
     }
 

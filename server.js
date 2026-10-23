@@ -1332,24 +1332,8 @@ app.post('/api/orders', (req, res) => {
 
 // Helper to dispatch confirmation email to customer once admin confirms payment
 async function sendCustomerPaymentConfirmationEmail(orderData) {
-  if (!orderData || !orderData.customer || !orderData.customer.email) return { sent: false };
-
-  const isCloudHost = Boolean(process.env.RENDER || process.env.NODE_ENV === 'production');
-  if (isCloudHost) {
-    try {
-      const netlifyRes = await fetch('https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderData })
-      });
-      const nData = await netlifyRes.json();
-      if (netlifyRes.ok && nData.success) {
-        console.log(`[CUSTOMER CONFIRM EMAIL] Sent via Netlify to ${orderData.customer.email}`);
-        return { sent: true };
-      }
-    } catch (e) {
-      console.warn('[CUSTOMER CONFIRM EMAIL] Netlify dispatch fallback failed:', e.message);
-    }
+  if (!orderData || !orderData.customer || !orderData.customer.email) {
+    return { sent: false, message: 'No customer email provided for this order' };
   }
 
   const transporter = getEmailTransporter();
@@ -1500,7 +1484,13 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
     }
   }
 
-  return { sent: false };
+  // Simulated email dispatch notice when SMTP credentials are not yet entered in .env
+  console.log(`[CUSTOMER CONFIRM EMAIL - SIMULATION] Prepared official confirmation email for ${customerEmail} (Order: ${orderData.orderRef}, Total: ₦${finalTotal.toLocaleString('en-NG')}).`);
+  return { 
+    sent: false, 
+    simulated: true, 
+    message: `Payment confirmed. Confirmation email generated for ${customerEmail}. (Set SMTP_USER and SMTP_PASS in .env for live Gmail delivery).` 
+  };
 }
 
 // Endpoint to dispatch customer payment confirmation email
@@ -1522,8 +1512,10 @@ app.patch('/api/orders/:orderRef/status', (req, res) => {
     return res.status(400).json({ success: false, message: 'Status is required' });
   }
 
+  const clean = (r) => (r || '').toString().trim().replace(/^#/, '').toLowerCase();
+  const targetClean = clean(orderRef);
   const orders = getStoredOrders();
-  const order = orders.find(o => o.orderRef === orderRef || o.orderRef === `#${orderRef}`);
+  const order = orders.find(o => clean(o.orderRef) === targetClean);
 
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
@@ -1558,8 +1550,10 @@ app.post('/api/orders/:orderRef/status', (req, res) => {
     return res.status(400).json({ success: false, message: 'Status is required' });
   }
 
+  const clean = (r) => (r || '').toString().trim().replace(/^#/, '').toLowerCase();
+  const targetClean = clean(orderRef);
   const orders = getStoredOrders();
-  const order = orders.find(o => o.orderRef === orderRef || o.orderRef === `#${orderRef}`);
+  const order = orders.find(o => clean(o.orderRef) === targetClean);
 
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
@@ -1575,8 +1569,8 @@ app.post('/api/orders/:orderRef/status', (req, res) => {
   });
 
   saveStoredOrders(orders);
+  console.log(`[ORDER STATUS] ${order.orderRef} updated to ${status}`);
 
-  // Automatically send customer confirmation email when payment is verified
   if (status === 'verified') {
     sendCustomerPaymentConfirmationEmail(order).catch(e => console.warn('[CONFIRM EMAIL]', e.message));
   }
@@ -1586,14 +1580,18 @@ app.post('/api/orders/:orderRef/status', (req, res) => {
 
 /**
  * DELETE /api/orders/:orderRef
- * Remove an order
+ * Remove an order permanently
  */
 app.delete('/api/orders/:orderRef', (req, res) => {
   const { orderRef } = req.params;
+  const clean = (r) => (r || '').toString().trim().replace(/^#/, '').toLowerCase();
+  const targetClean = clean(orderRef);
   let orders = getStoredOrders();
-  orders = orders.filter(o => o.orderRef !== orderRef && o.orderRef !== `#${orderRef}`);
+  const initialCount = orders.length;
+  orders = orders.filter(o => clean(o.orderRef) !== targetClean);
   saveStoredOrders(orders);
-  res.json({ success: true, message: `Order ${orderRef} removed` });
+  console.log(`[ORDER DELETED] ${orderRef} removed (${initialCount} -> ${orders.length} remaining)`);
+  res.json({ success: true, message: `Order ${orderRef} removed`, remaining: orders.length });
 });
 
 /**

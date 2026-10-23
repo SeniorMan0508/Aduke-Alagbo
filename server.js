@@ -1,5 +1,5 @@
 /**
- * QUAD-ACE HERBS - SECURE BACKEND SERVER
+ * ADUKE ALAGBO - SECURE BACKEND SERVER
  * =====================================
  * Handles secure admin authentication, email password resets,
  * and live catalog synchronization.
@@ -55,6 +55,8 @@ const AUTH_FILE = path.join(DATA_DIR, 'admin-auth.json');
 const PRODUCTS_FILE = path.join(DATA_DIR, 'custom-products.json');
 const CATEGORIES_FILE = path.join(DATA_DIR, 'custom-categories.json');
 const REVIEWS_FILE = path.join(DATA_DIR, 'reviews.json');
+const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
+const INVENTORY_FILE = path.join(DATA_DIR, 'inventory.json');
 
 // --- CRYPTOGRAPHIC UTILITIES ---
 function hashSecret(secret, salt = crypto.randomBytes(16).toString('hex')) {
@@ -90,7 +92,7 @@ function isValidSession(token) {
 }
 
 // --- EMAIL SENDER CONFIGURATION ---
-const DEFAULT_OWNER_EMAIL = process.env.ADMIN_EMAIL || process.env.SMTP_USER || "seller@quadaceherbs.com";
+const DEFAULT_OWNER_EMAIL = process.env.ADMIN_EMAIL || process.env.SMTP_USER || "seller@adukealagbo.com";
 const DEFAULT_INITIAL_PASSWORD = "quadace2026";
 
 function maskEmail(email) {
@@ -206,14 +208,14 @@ async function sendResetEmail(toEmail, code) {
 
   // Direct SMTP transport (works on local development / laptop)
   const transporter = getEmailTransporter();
-  const LOGO_PATH = path.join(__dirname, 'images', 'bg-image.jpeg');
+  const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
       <div style="text-align: center; margin-bottom: 20px;">
-        ${hasLogo ? `<img src="cid:storeLogo" alt="Quad-Ace Herbs Logo" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2.5px solid #d4af37; box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: block; margin: 0 auto 10px;">` : ''}
-        <h2 style="color: #18422e; margin: 0; font-size: 22px; font-weight: 800;">Quad-Ace Herbs</h2>
+        ${hasLogo ? `<img src="cid:adukeAlagboLogo" alt="Aduke Alagbo Logo" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2.5px solid #d4af37; box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: block; margin: 0 auto 10px;">` : ''}
+        <h2 style="color: #18422e; margin: 0; font-size: 22px; font-weight: 800;">Aduke Alagbo</h2>
         <p style="color: #64748b; font-size: 13px; margin-top: 4px;">Admin Security & Password Reset</p>
       </div>
       <p style="color: #1e293b; font-size: 15px;">Hello Store Owner,</p>
@@ -227,24 +229,24 @@ async function sendResetEmail(toEmail, code) {
         ⏳ <strong>Note:</strong> This verification code is valid for <strong>15 minutes</strong>. If you did not request this password reset, you can safely ignore this email.
       </p>
       <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-      <p style="font-size: 11px; color: #94a3b8; text-align: center;">Quad-Ace Herbs • Authentic Ancestral Remedies • Abeokuta, Ogun State, Nigeria</p>
+      <p style="font-size: 11px; color: #94a3b8; text-align: center;">Aduke Alagbo • Authentic Ancestral Remedies • Abeokuta, Ogun State, Nigeria</p>
     </div>
   `;
 
   const emailAttachments = hasLogo ? [
     {
-      filename: 'quad-ace-logo.jpeg',
+      filename: 'aduke-alagbo-logo.jpeg',
       path: LOGO_PATH,
-      cid: 'storeLogo'
+      cid: 'adukeAlagboLogo'
     }
   ] : [];
 
   if (transporter) {
     try {
       await transporter.sendMail({
-        from: `"Quad-Ace Herbs Security" <${process.env.SMTP_USER}>`,
+        from: `"Aduke Alagbo Security" <${process.env.SMTP_USER}>`,
         to: toEmail,
-        subject: "Your Quad-Ace Herbs Admin Password Reset Code",
+        subject: "Your Aduke Alagbo Admin Password Reset Code",
         html: htmlContent,
         attachments: emailAttachments
       });
@@ -275,7 +277,7 @@ async function sendOrderNotificationEmail(orderData) {
   const transporter = getEmailTransporter();
   const auth = getAuthData();
   const ownerEmail = auth ? auth.adminEmail : DEFAULT_OWNER_EMAIL;
-  const LOGO_PATH = path.join(__dirname, 'images', 'bg-image.jpeg');
+  const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
 
   const itemsRows = (orderData.items || []).map((it, idx) => `
@@ -302,8 +304,8 @@ async function sendOrderNotificationEmail(orderData) {
     <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
       <!-- Brand Header with Logo Image -->
       <div style="background: linear-gradient(135deg, #102e20 0%, #18422e 100%); padding: 26px 20px; text-align: center; color: #ffffff;">
-        ${hasLogo ? `<img src="cid:storeLogo" alt="Quad-Ace Herbs Logo" style="width: 78px; height: 78px; border-radius: 50%; object-fit: cover; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.25); display: block; margin: 0 auto 10px;">` : ''}
-        <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: 0.02em; color: #ffffff;">Quad-Ace Herbs</h1>
+        ${hasLogo ? `<img src="cid:storeLogo" alt="Aduke Alagbo Logo" style="width: 78px; height: 78px; border-radius: 50%; object-fit: cover; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.25); display: block; margin: 0 auto 10px;">` : ''}
+        <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: 0.02em; color: #ffffff;">Aduke Alagbo</h1>
         <p style="margin: 4px 0 0 0; font-size: 13px; color: #cbd5e1;">Official Store Order Notification</p>
       </div>
 
@@ -396,7 +398,7 @@ async function sendOrderNotificationEmail(orderData) {
 
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0 16px 0;">
         <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">
-          Quad-Ace Herbs • Authentic Ancestral Remedies • Abeokuta, Ogun State, Nigeria
+          Aduke Alagbo • Authentic Ancestral Remedies • Abeokuta, Ogun State, Nigeria
         </p>
       </div>
     </div>
@@ -404,9 +406,9 @@ async function sendOrderNotificationEmail(orderData) {
 
   const emailAttachments = hasLogo ? [
     {
-      filename: 'quad-ace-logo.jpeg',
+      filename: 'aduke-alagbo-logo.jpeg',
       path: LOGO_PATH,
-      cid: 'storeLogo'
+      cid: 'adukeAlagboLogo'
     }
   ] : [];
 
@@ -421,12 +423,12 @@ async function sendOrderNotificationEmail(orderData) {
     }
   }
 
-  const subject = `New Order: ${orderData.customer ? orderData.customer.name : 'Customer'} (${orderData.orderRef}) - Quad-Ace Herbs`;
+  const subject = `New Order: ${orderData.customer ? orderData.customer.name : 'Customer'} (${orderData.orderRef}) - Aduke Alagbo`;
 
   if (transporter) {
     try {
       await transporter.sendMail({
-        from: `"Quad-Ace Herbs Store" <${process.env.SMTP_USER}>`,
+        from: `"Aduke Alagbo Store" <${process.env.SMTP_USER}>`,
         to: ownerEmail,
         subject: subject,
         html: htmlContent,
@@ -456,7 +458,7 @@ function getAuthData() {
     };
     fs.writeFileSync(AUTH_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
     console.log('\n======================================================');
-    console.log('🌿 Quad-Ace Herbs Admin Security Initialized');
+    console.log('🌿 Aduke Alagbo Admin Security Initialized');
     console.log(`🔐 Default Admin Password: ${DEFAULT_INITIAL_PASSWORD}`);
     console.log(`✉️ Registered Owner Email: ${initialData.adminEmail}`);
     console.log('======================================================\n');
@@ -890,7 +892,7 @@ const DEFAULT_REVIEWS = [
     location: "Lekki, Lagos",
     rating: 5,
     remedy: "Agbo Jedi-Jedi Extra Strength",
-    comment: "I had suffered from severe Jedi-Jedi and lower back pain for over 8 months. Sitting in traffic was pure torture. After just 4 days of taking Quad-Ace Agbo Jedi Extra Strength, the waist stiffness completely dissolved. This is the real deal!",
+    comment: "I had suffered from severe Jedi-Jedi and lower back pain for over 8 months. Sitting in traffic was pure torture. After just 4 days of taking Aduke Alagbo Agbo Jedi Extra Strength, the waist stiffness completely dissolved. This is the real deal!",
     verifiedBuyer: true,
     createdAt: "2026-09-28T10:30:00.000Z"
   },
@@ -910,7 +912,7 @@ const DEFAULT_REVIEWS = [
     location: "London, United Kingdom",
     rating: 5,
     remedy: "Queen's Hormonal Balance",
-    comment: "I ordered the Queen's Hormonal Balance tea from the UK via DHL. It arrived in London in just 4 days! My cycle that had seized for 3 months returned naturally with zero pain. God bless Quad-Ace Herbs!",
+    comment: "I ordered the Queen's Hormonal Balance tea from the UK via DHL. It arrived in London in just 4 days! My cycle that had seized for 3 months returned naturally with zero pain. God bless Aduke Alagbo!",
     verifiedBuyer: true,
     createdAt: "2026-10-04T09:45:00.000Z"
   },
@@ -920,7 +922,7 @@ const DEFAULT_REVIEWS = [
     location: "Ibadan, Oyo State",
     rating: 5,
     remedy: "Raw Prekese & Roots Bundle",
-    comment: "The Bitter Kola & Prekese pod infusion cleared my morning fatigue and bloating within a week. Authentic herbs, properly prepared. Quad-Ace Herbs is now my family's go-to apothecary.",
+    comment: "The Bitter Kola & Prekese pod infusion cleared my morning fatigue and bloating within a week. Authentic herbs, properly prepared. Aduke Alagbo is now my family's go-to apothecary.",
     verifiedBuyer: true,
     createdAt: "2026-10-06T16:20:00.000Z"
   }
@@ -1016,6 +1018,13 @@ app.post('/api/orders/notify-email', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid order data' });
   }
 
+  // Also ensure order is persisted in server orders database
+  try {
+    saveNewServerOrder(orderData);
+  } catch (e) {
+    console.warn('[SERVER] Could not auto-persist order on email notify:', e.message);
+  }
+
   try {
     const result = await sendOrderNotificationEmail(orderData);
     res.json({ success: true, result, message: 'Order email notification dispatched with brand logo.' });
@@ -1023,6 +1032,679 @@ app.post('/api/orders/notify-email', async (req, res) => {
     console.error('[ORDER EMAIL API ERROR]:', err);
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// --- CUSTOMER ORDERS & PURCHASES API ENDPOINTS ---
+
+const DEFAULT_SERVER_ORDERS = [
+  {
+    orderRef: "#QA-84920",
+    customer: {
+      name: "Mrs. Funmilayo Adeleke",
+      phone: "+234 803 456 7891",
+      email: "funmi.adeleke@gmail.com",
+      address: "Block 4, Flat 2, Admiralty Way, Lekki Phase 1, Lagos State",
+      notes: "Please call my security gate on arrival. Deliver before 3 PM if possible."
+    },
+    senderDetails: {
+      bank: "GTBank",
+      name: "Funmilayo Adeleke",
+      sessionId: "00001324090543219"
+    },
+    receiptProof: {
+      hasReceipt: true,
+      fileName: "gtbank_transfer_receipt.jpg",
+      dataUrl: "images/agbo-jedi.jpg",
+      sessionId: "00001324090543219"
+    },
+    items: [
+      {
+        id: "agbo-jedi-extra",
+        name: "Agbo Jedi-Jedi Extra Strength",
+        price: 6500,
+        quantity: 2,
+        image: "images/agbo-jedi.jpg",
+        category: "agbo"
+      },
+      {
+        id: "raw-ancestral-roots",
+        name: "Raw Ancestral Boiling Roots Bundle (Gbogbonise)",
+        price: 5500,
+        quantity: 1,
+        image: "images/ancestral-roots.jpg",
+        category: "raw"
+      }
+    ],
+    shippingMethod: "nationwide",
+    shippingFee: 0,
+    discount: 0,
+    subtotal: 18500,
+    finalTotal: 18500,
+    paymentMethod: "bank",
+    status: "verified",
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    statusHistory: [
+      { status: "pending", timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), note: "Customer submitted bank transfer proof" },
+      { status: "verified", timestamp: new Date(Date.now() - 100 * 60 * 1000).toISOString(), note: "Admin verified Kuda Bank transfer alert of ₦18,500" }
+    ]
+  },
+  {
+    orderRef: "#QA-93014",
+    customer: {
+      name: "Alhaji Ibrahim Danjuma",
+      phone: "+234 812 345 6789",
+      email: "ibrahim.d@yahoo.com",
+      address: "Plot 14, Gwarinpa Estate, 3rd Avenue, Abuja, FCT",
+      notes: "Kindly double-seal the bottles securely for courier travel."
+    },
+    senderDetails: {
+      bank: "Zenith Bank",
+      name: "Ibrahim Danjuma",
+      sessionId: "00002819384729103"
+    },
+    receiptProof: {
+      hasReceipt: true,
+      fileName: "zenith_transfer_receipt.jpg",
+      dataUrl: "images/man-power.jpg",
+      sessionId: "00002819384729103"
+    },
+    items: [
+      {
+        id: "man-power-vitality",
+        name: "Man-Power Virility & Stamina Roots Infusion",
+        price: 9500,
+        quantity: 2,
+        image: "images/man-power.jpg",
+        category: "men"
+      }
+    ],
+    shippingMethod: "nationwide",
+    shippingFee: 0,
+    discount: 0,
+    subtotal: 19000,
+    finalTotal: 19000,
+    paymentMethod: "bank",
+    status: "dispatched",
+    createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    statusHistory: [
+      { status: "pending", timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString() },
+      { status: "verified", timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString() },
+      { status: "dispatched", timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), note: "Handed over to interstate courier dispatch rider" }
+    ]
+  },
+  {
+    orderRef: "#QA-58291",
+    customer: {
+      name: "Dr. Folashade Babatunde",
+      phone: "+234 902 112 3344",
+      email: "dr.folashade@gmail.com",
+      address: "12 Quarry Road, Ibara, Abeokuta, Ogun State",
+      notes: "Local dispatch rider can deliver anytime today."
+    },
+    senderDetails: {
+      bank: "Kuda Bank",
+      name: "Folashade Babatunde",
+      sessionId: "20239805230912"
+    },
+    receiptProof: {
+      hasReceipt: true,
+      fileName: "kuda_payment_proof.jpg",
+      dataUrl: "images/hormonal-balance.jpg",
+      sessionId: "20239805230912"
+    },
+    items: [
+      {
+        id: "queens-hormonal-balance",
+        name: "Queen's Hormonal Balance & Womb Cleanse",
+        price: 8500,
+        quantity: 1,
+        image: "images/hormonal-balance.jpg",
+        category: "women"
+      },
+      {
+        id: "agbo-idakole-blend",
+        name: "Agbo Idakole Herbal Cleanser",
+        price: 6000,
+        quantity: 1,
+        image: "images/agbo-jedi.jpg",
+        category: "agbo"
+      }
+    ],
+    shippingMethod: "local",
+    shippingFee: 2500,
+    discount: 0,
+    subtotal: 14500,
+    finalTotal: 17000,
+    paymentMethod: "bank",
+    status: "pending",
+    createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+    statusHistory: [
+      { status: "pending", timestamp: new Date(Date.now() - 25 * 60 * 1000).toISOString(), note: "Awaiting owner verification of Kuda Bank alert" }
+    ]
+  },
+  {
+    orderRef: "#QA-41908",
+    customer: {
+      name: "Emeka Okonkwo",
+      phone: "+234 807 889 9112",
+      email: "emeka.ok@outlook.com",
+      address: "5 Commercial Avenue, Yaba, Lagos State",
+      notes: "Purchased directly via WhatsApp customer inquiry."
+    },
+    senderDetails: {
+      bank: "OPay",
+      name: "Emeka Okonkwo",
+      sessionId: "OPAY-77129031"
+    },
+    receiptProof: {
+      hasReceipt: false
+    },
+    items: [
+      {
+        id: "man-power-vitality",
+        name: "Man-Power Virility & Stamina Roots Infusion",
+        price: 9500,
+        quantity: 1,
+        image: "images/man-power.jpg",
+        category: "men"
+      },
+      {
+        id: "agbo-jedi-extra",
+        name: "Agbo Jedi-Jedi Extra Strength",
+        price: 6500,
+        quantity: 1,
+        image: "images/agbo-jedi.jpg",
+        category: "agbo"
+      }
+    ],
+    shippingMethod: "nationwide",
+    shippingFee: 0,
+    discount: 0,
+    subtotal: 16000,
+    finalTotal: 16000,
+    paymentMethod: "whatsapp",
+    status: "delivered",
+    createdAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
+    statusHistory: [
+      { status: "pending", timestamp: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString() },
+      { status: "verified", timestamp: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() },
+      { status: "dispatched", timestamp: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString() },
+      { status: "delivered", timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), note: "Delivered safely to customer in Yaba" }
+    ]
+  }
+];
+
+function getStoredOrders() {
+  if (!fs.existsSync(ORDERS_FILE)) {
+    fs.writeFileSync(ORDERS_FILE, JSON.stringify(DEFAULT_SERVER_ORDERS, null, 2), 'utf-8');
+    return DEFAULT_SERVER_ORDERS;
+  }
+  try {
+    const raw = fs.readFileSync(ORDERS_FILE, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : DEFAULT_SERVER_ORDERS;
+  } catch (e) {
+    return DEFAULT_SERVER_ORDERS;
+  }
+}
+
+function saveStoredOrders(orders) {
+  fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2), 'utf-8');
+}
+
+function getStoredInventory() {
+  if (!fs.existsSync(INVENTORY_FILE)) {
+    const initial = {};
+    fs.writeFileSync(INVENTORY_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+    return initial;
+  }
+  try {
+    const raw = fs.readFileSync(INVENTORY_FILE, 'utf-8');
+    return JSON.parse(raw);
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveStoredInventory(inv) {
+  fs.writeFileSync(INVENTORY_FILE, JSON.stringify(inv, null, 2), 'utf-8');
+}
+
+function saveNewServerOrder(order) {
+  if (!order || !order.orderRef) return null;
+  const orders = getStoredOrders();
+  const existingIdx = orders.findIndex(o => o.orderRef === order.orderRef);
+  
+  if (existingIdx >= 0) {
+    orders[existingIdx] = { ...orders[existingIdx], ...order };
+  } else {
+    orders.unshift(order);
+  }
+
+  // Cap at 1,000 orders
+  if (orders.length > 1000) {
+    orders.length = 1000;
+  }
+
+  saveStoredOrders(orders);
+
+  // Deduct inventory
+  if (Array.isArray(order.items)) {
+    const inv = getStoredInventory();
+    order.items.forEach(it => {
+      const id = it.id;
+      if (!inv[id]) {
+        inv[id] = { stock: 35, lowStockThreshold: 8, lastRestocked: new Date().toISOString() };
+      }
+      const qty = Number(it.quantity) || 1;
+      inv[id].stock = Math.max(0, (inv[id].stock || 35) - qty);
+      inv[id].updatedAt = new Date().toISOString();
+    });
+    saveStoredInventory(inv);
+  }
+
+  console.log(`[ORDER RECORDED] Order ${order.orderRef} registered for customer ${order.customer ? order.customer.name : 'Guest'}`);
+  return order;
+}
+
+/**
+ * GET /api/orders
+ * Returns all recorded customer purchases
+ */
+app.get('/api/orders', (req, res) => {
+  const orders = getStoredOrders();
+  res.json({ success: true, orders });
+});
+
+/**
+ * POST /api/orders
+ * Customer places an order on the website
+ */
+app.post('/api/orders', (req, res) => {
+  const orderData = req.body;
+  if (!orderData || !orderData.orderRef) {
+    return res.status(400).json({ success: false, message: 'Invalid order data' });
+  }
+
+  const saved = saveNewServerOrder(orderData);
+  res.json({ success: true, order: saved, message: `Order ${orderData.orderRef} placed and recorded successfully!` });
+});
+
+/**
+ * PATCH /api/orders/:orderRef/status
+ * Update order tracking status (Pending, Verified, Dispatched, Delivered, Cancelled)
+ */
+app.patch('/api/orders/:orderRef/status', (req, res) => {
+  const { orderRef } = req.params;
+  const { status, note } = req.body;
+
+  if (!status) {
+    return res.status(400).json({ success: false, message: 'Status is required' });
+  }
+
+  const orders = getStoredOrders();
+  const order = orders.find(o => o.orderRef === orderRef || o.orderRef === `#${orderRef}`);
+
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+// Helper to dispatch confirmation email to customer once admin confirms payment
+async function sendCustomerPaymentConfirmationEmail(orderData) {
+  if (!orderData || !orderData.customer || !orderData.customer.email) return { sent: false };
+
+  const isCloudHost = Boolean(process.env.RENDER || process.env.NODE_ENV === 'production');
+  if (isCloudHost) {
+    try {
+      const netlifyRes = await fetch('https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderData })
+      });
+      const nData = await netlifyRes.json();
+      if (netlifyRes.ok && nData.success) {
+        console.log(`[CUSTOMER CONFIRM EMAIL] Sent via Netlify to ${orderData.customer.email}`);
+        return { sent: true };
+      }
+    } catch (e) {
+      console.warn('[CUSTOMER CONFIRM EMAIL] Netlify dispatch fallback failed:', e.message);
+    }
+  }
+
+  const transporter = getEmailTransporter();
+  const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
+  const hasLogo = fs.existsSync(LOGO_PATH);
+
+  const customerEmail = orderData.customer.email.trim();
+  const customerName = orderData.customer.name || 'Valued Customer';
+  const finalTotal = Number(orderData.finalTotal || 0);
+
+  const itemsRows = (orderData.items || []).map((it, idx) => `
+    <tr>
+      <td style="padding: 12px 14px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #1e293b;">
+        <strong>${idx + 1}. ${it.name}</strong>
+      </td>
+      <td style="padding: 12px 14px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: center; color: #475569;">
+        x${it.quantity}
+      </td>
+      <td style="padding: 12px 14px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: right; font-weight: 700; color: #18422e;">
+        ₦${Number(it.price * it.quantity).toLocaleString('en-NG')}
+      </td>
+    </tr>
+  `).join('');
+
+  const deliveryNote = orderData.shippingMethod === 'nationwide'
+    ? 'Interstate Courier (Sorted with dispatch rider)'
+    : (orderData.shippingMethod === 'international' ? 'International DHL / FedEx (Sorted with courier)' : `Local Courier (₦${Number(orderData.shippingFee || 0).toLocaleString('en-NG')})`);
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
+      <div style="background: linear-gradient(135deg, #102e20 0%, #18422e 100%); padding: 30px 20px; text-align: center; color: #ffffff;">
+        ${hasLogo ? `<img src="cid:adukeAlagboLogo" alt="Aduke Alagbo Logo" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.25); display: block; margin: 0 auto 12px;">` : ''}
+        <h1 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.02em; color: #ffffff;">Aduke Alagbo</h1>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #cbd5e1;">Authentic Ancestral African Remedies</p>
+      </div>
+
+      <div style="background: #ecfdf5; border-bottom: 2px solid #86efac; padding: 18px 24px; text-align: center;">
+        <div style="display: inline-block; background: #10b981; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✓</div>
+        <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PAYMENT CONFIRMED & VERIFIED</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #047857;">Your bank transfer payment has been confirmed by Aduke Alagbo!</p>
+      </div>
+
+      <div style="padding: 26px;">
+        <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+        <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+          Good news! Aduke Alagbo has personally verified your bank transfer payment of <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
+          Your fresh ancestral herbal remedies are now being prepared, packaged with care, and scheduled for dispatch.
+        </p>
+
+        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 700;">Order Reference</span>
+            <span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>
+          </div>
+          <div style="font-size: 22px; font-weight: 800; color: #18422e; font-family: monospace;">${orderData.orderRef}</div>
+          <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Verified on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+        </div>
+
+        <h3 style="font-size: 14px; color: #18422e; margin: 20px 0 10px 0; text-transform: uppercase; letter-spacing: 0.04em;">
+          📦 Items in Your Package
+        </h3>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px;">
+          <thead>
+            <tr style="background: #f1f5f9; text-align: left;">
+              <th style="padding: 10px 14px; font-size: 12px; color: #475569; text-transform: uppercase;">Remedy</th>
+              <th style="padding: 10px 14px; font-size: 12px; color: #475569; text-transform: uppercase; text-align: center;">Qty</th>
+              <th style="padding: 10px 14px; font-size: 12px; color: #475569; text-transform: uppercase; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsRows}
+          </tbody>
+        </table>
+
+        <div style="background: #fafaf9; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 6px;">
+            <span>Subtotal:</span>
+            <span>₦${Number(orderData.subtotal || finalTotal).toLocaleString('en-NG')}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 6px;">
+            <span>Delivery Courier:</span>
+            <span>${deliveryNote}</span>
+          </div>
+          ${orderData.discount > 0 ? `
+          <div style="display: flex; justify-content: space-between; font-size: 13px; color: #16a34a; margin-bottom: 6px;">
+            <span>Discount Applied:</span>
+            <span>-₦${Number(orderData.discount).toLocaleString('en-NG')}</span>
+          </div>` : ''}
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 10px 0;">
+          <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; color: #18422e;">
+            <span>Total Confirmed Paid:</span>
+            <span style="color: #15803d;">₦${finalTotal.toLocaleString('en-NG')} ✓</span>
+          </div>
+        </div>
+
+        <div style="background: #f8fafc; border-left: 4px solid #18422e; padding: 14px 16px; border-radius: 6px; margin-bottom: 24px;">
+          <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Delivery Destination</div>
+          <div style="font-size: 14px; color: #1e293b; font-weight: 600;">${orderData.customer.address}</div>
+          <div style="font-size: 13px; color: #475569; margin-top: 2px;">Phone: <strong>${orderData.customer.phone}</strong></div>
+        </div>
+
+        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
+          <div style="font-size: 13px; color: #92400e; line-height: 1.5;">
+            🚚 <strong>Dispatch Notice:</strong> Our delivery rider will reach out to you via phone/WhatsApp (<strong>${orderData.customer.phone}</strong>) before arrival at your address.
+          </div>
+        </div>
+
+        <p style="font-size: 13px; color: #475569; line-height: 1.5; margin-bottom: 20px;">
+          If you have any questions about your dosage or package tracking, message Aduke Alagbo directly on WhatsApp at 
+          <a href="https://wa.me/2349055126388" style="color: #18422e; font-weight: 700; text-decoration: underline;">+234 905 512 6388</a>.
+        </p>
+
+        <p style="font-size: 14px; color: #18422e; font-weight: 700; margin-bottom: 4px;">
+          Aduke Alagbo
+        </p>
+        <p style="font-size: 12px; color: #64748b; margin-top: 0;">Authentic Ancestral Remedies</p>
+      </div>
+
+      <div style="background: #f1f5f9; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="font-size: 11px; color: #94a3b8; margin: 0;">
+          Aduke Alagbo • 100% Wildcrafted Ancestral Botanicals • Abeokuta, Ogun State, Nigeria
+        </p>
+      </div>
+    </div>
+  `;
+
+  const emailAttachments = hasLogo ? [
+    {
+      filename: 'aduke-alagbo-logo.jpeg',
+      path: LOGO_PATH,
+      cid: 'adukeAlagboLogo'
+    }
+  ] : [];
+
+  if (transporter) {
+    try {
+      await transporter.sendMail({
+        from: `"Aduke Alagbo" <${process.env.SMTP_USER}>`,
+        to: customerEmail,
+        subject: `Payment Confirmed: Your Aduke Alagbo Order (${orderData.orderRef}) is Being Prepared! ✓`,
+        html: htmlContent,
+        attachments: emailAttachments
+      });
+      console.log(`[CUSTOMER CONFIRM EMAIL] Sent directly via SMTP to ${customerEmail}`);
+      return { sent: true };
+    } catch (err) {
+      console.error(`[CUSTOMER CONFIRM EMAIL ERROR] SMTP failed:`, err.message);
+    }
+  }
+
+  return { sent: false };
+}
+
+// Endpoint to dispatch customer payment confirmation email
+app.post('/api/orders/confirm-payment-email', async (req, res) => {
+  const { orderData } = req.body;
+  if (!orderData || !orderData.orderRef) {
+    return res.status(400).json({ success: false, message: 'orderData is required' });
+  }
+  const result = await sendCustomerPaymentConfirmationEmail(orderData);
+  res.json({ success: true, ...result });
+});
+
+// Update order status (PATCH)
+app.patch('/api/orders/:orderRef/status', (req, res) => {
+  const { orderRef } = req.params;
+  const { status, note } = req.body;
+
+  if (!status) {
+    return res.status(400).json({ success: false, message: 'Status is required' });
+  }
+
+  const orders = getStoredOrders();
+  const order = orders.find(o => o.orderRef === orderRef || o.orderRef === `#${orderRef}`);
+
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  order.status = status;
+  order.updatedAt = new Date().toISOString();
+  if (!Array.isArray(order.statusHistory)) order.statusHistory = [];
+  order.statusHistory.push({
+    status,
+    timestamp: new Date().toISOString(),
+    note: note || `Status changed to ${status}`
+  });
+
+  saveStoredOrders(orders);
+  console.log(`[ORDER STATUS] ${order.orderRef} updated to ${status}`);
+
+  // Automatically send customer confirmation email when payment is verified
+  if (status === 'verified') {
+    sendCustomerPaymentConfirmationEmail(order).catch(e => console.warn('[CONFIRM EMAIL]', e.message));
+  }
+
+  res.json({ success: true, order, message: `Order ${order.orderRef} status updated to ${status}` });
+});
+
+// Also support POST for status update
+app.post('/api/orders/:orderRef/status', (req, res) => {
+  const { orderRef } = req.params;
+  const { status, note } = req.body;
+
+  if (!status) {
+    return res.status(400).json({ success: false, message: 'Status is required' });
+  }
+
+  const orders = getStoredOrders();
+  const order = orders.find(o => o.orderRef === orderRef || o.orderRef === `#${orderRef}`);
+
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  order.status = status;
+  order.updatedAt = new Date().toISOString();
+  if (!Array.isArray(order.statusHistory)) order.statusHistory = [];
+  order.statusHistory.push({
+    status,
+    timestamp: new Date().toISOString(),
+    note: note || `Status changed to ${status}`
+  });
+
+  saveStoredOrders(orders);
+
+  // Automatically send customer confirmation email when payment is verified
+  if (status === 'verified') {
+    sendCustomerPaymentConfirmationEmail(order).catch(e => console.warn('[CONFIRM EMAIL]', e.message));
+  }
+
+  res.json({ success: true, order, message: `Order ${order.orderRef} status updated to ${status}` });
+});
+
+/**
+ * DELETE /api/orders/:orderRef
+ * Remove an order
+ */
+app.delete('/api/orders/:orderRef', (req, res) => {
+  const { orderRef } = req.params;
+  let orders = getStoredOrders();
+  orders = orders.filter(o => o.orderRef !== orderRef && o.orderRef !== `#${orderRef}`);
+  saveStoredOrders(orders);
+  res.json({ success: true, message: `Order ${orderRef} removed` });
+});
+
+/**
+ * GET /api/inventory
+ * Retrieve current product stock levels
+ */
+app.get('/api/inventory', (req, res) => {
+  const inventory = getStoredInventory();
+  res.json({ success: true, inventory });
+});
+
+/**
+ * POST /api/inventory
+ * Update stock level and threshold for a product
+ */
+app.post('/api/inventory', (req, res) => {
+  const { productId, stock, lowStockThreshold } = req.body;
+  if (!productId) {
+    return res.status(400).json({ success: false, message: 'productId is required' });
+  }
+
+  const inv = getStoredInventory();
+  inv[productId] = {
+    stock: Math.max(0, parseInt(stock, 10) || 0),
+    lowStockThreshold: Math.max(1, parseInt(lowStockThreshold, 10) || 8),
+    lastRestocked: new Date().toISOString()
+  };
+
+  saveStoredInventory(inv);
+  res.json({ success: true, inventory: inv[productId], message: `Stock updated for product ${productId}` });
+});
+
+/**
+ * GET /api/orders/stats
+ * Overview stats of purchases, revenue, and product sales
+ */
+app.get('/api/orders/stats', (req, res) => {
+  const orders = getStoredOrders();
+  const inv = getStoredInventory();
+
+  let totalRevenue = 0;
+  let totalUnitsSold = 0;
+  let pendingCount = 0;
+  let verifiedCount = 0;
+  let dispatchedCount = 0;
+  let deliveredCount = 0;
+
+  const productSales = {};
+
+  orders.forEach(ord => {
+    if (ord.status === 'cancelled') return;
+
+    totalRevenue += Number(ord.finalTotal || 0);
+
+    if (ord.status === 'pending') pendingCount++;
+    else if (ord.status === 'verified') verifiedCount++;
+    else if (ord.status === 'dispatched') dispatchedCount++;
+    else if (ord.status === 'delivered') deliveredCount++;
+
+    if (Array.isArray(ord.items)) {
+      ord.items.forEach(it => {
+        const qty = Number(it.quantity) || 1;
+        totalUnitsSold += qty;
+        if (!productSales[it.id]) {
+          productSales[it.id] = {
+            id: it.id,
+            name: it.name,
+            unitsSold: 0,
+            revenue: 0,
+            ordersCount: 0
+          };
+        }
+        productSales[it.id].unitsSold += qty;
+        productSales[it.id].revenue += (Number(it.price) || 0) * qty;
+        productSales[it.id].ordersCount += 1;
+      });
+    }
+  });
+
+  res.json({
+    success: true,
+    stats: {
+      totalOrders: orders.length,
+      totalRevenue,
+      totalUnitsSold,
+      pendingCount,
+      verifiedCount,
+      dispatchedCount,
+      deliveredCount,
+      productSales
+    }
+  });
 });
 
 // --- STATIC WEBSITE HOSTING ---
@@ -1058,7 +1740,7 @@ function getLocalNetworkIp() {
 app.listen(PORT, '0.0.0.0', () => {
   const lanIp = getLocalNetworkIp();
   console.log(`\n======================================================`);
-  console.log(`🚀 Quad-Ace Herbs Web Server Running`);
+  console.log(`🚀 Aduke Alagbo Web Server Running`);
   console.log(`💻 Laptop URL:     http://localhost:${PORT}`);
   console.log(`📱 Phone (Wi-Fi):  http://${lanIp}:${PORT}`);
   console.log(`🛍️  Shop Page:     http://${lanIp}:${PORT}/shop.html`);

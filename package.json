@@ -13,7 +13,7 @@
     "admin",
     "natural-medicine"
   ],
-  "author": "Quad-Ace Herbs",
+  "author": "Aduke Alagbo",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",

@@ -1,6 +1,5 @@
 const nodemailer = require('nodemailer');
-const fs = require('fs');
-const path = require('path');
+const { ADUKE_LOGO_BASE64 } = require('./logo-asset');
 
 function getEmailTransporter() {
   const user = process.env.SMTP_USER;
@@ -55,16 +54,13 @@ exports.handler = async (event, context) => {
     };
   }
 
-  // Attempt local logo attachment if available, otherwise use absolute public URL
-  const localLogoPath = path.join(__dirname, '..', '..', 'images', 'bg-image.jpeg');
-  const hasLocalLogo = fs.existsSync(localLogoPath);
-  const logoSrc = hasLocalLogo ? 'cid:storeLogo' : 'https://quad-ace-herbs.netlify.app/images/bg-image.jpeg';
+  const logoSrc = 'cid:adukeAlagboLogo';
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
       <div style="text-align: center; margin-bottom: 22px;">
-        <img src="${logoSrc}" alt="Quad-Ace Herbs Logo" style="width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 2.5px solid #d4af37; box-shadow: 0 4px 10px rgba(0,0,0,0.12); display: block; margin: 0 auto 12px;">
-        <h2 style="color: #18422e; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.3px;">Quad-Ace Herbs</h2>
+        <img src="${logoSrc}" alt="Aduke Alagbo Logo" style="width: 76px; height: 76px; border-radius: 50%; object-fit: cover; border: 2.5px solid #d4af37; box-shadow: 0 4px 10px rgba(0,0,0,0.12); display: block; margin: 0 auto 12px;">
+        <h2 style="color: #18422e; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.3px;">Aduke Alagbo</h2>
         <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0; font-weight: 500;">Admin Security & Passcode Reset</p>
       </div>
 
@@ -85,24 +81,24 @@ exports.handler = async (event, context) => {
 
       <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 22px 0;">
       <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
-        Quad-Ace Herbs • Authentic Ancestral Remedies • Abeokuta, Ogun State, Nigeria
+        Aduke Alagbo • Authentic Ancestral Remedies • Abeokuta, Ogun State, Nigeria
       </p>
     </div>
   `;
 
-  const emailAttachments = hasLocalLogo ? [
+  const emailAttachments = [
     {
-      filename: 'quad-ace-logo.jpeg',
-      path: localLogoPath,
-      cid: 'storeLogo'
+      filename: 'aduke-alagbo-logo.jpeg',
+      content: Buffer.from(ADUKE_LOGO_BASE64, 'base64'),
+      cid: 'adukeAlagboLogo'
     }
-  ] : [];
+  ];
 
   try {
     await transporter.sendMail({
-      from: `"Quad-Ace Herbs Security" <${process.env.SMTP_USER}>`,
+      from: `"Aduke Alagbo Security" <${process.env.SMTP_USER}>`,
       to: toEmail,
-      subject: "Your Quad-Ace Herbs Admin Password Reset Code",
+      subject: "Your Aduke Alagbo Admin Password Reset Code",
       html: htmlContent,
       attachments: emailAttachments
     });

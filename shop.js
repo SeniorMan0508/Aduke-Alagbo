@@ -1,5 +1,5 @@
 /**
- * QUAD-ACE HERBS - DEDICATED SHOP PAGE CONTROLLER
+ * ADUKE ALAGBO - DEDICATED SHOP PAGE CONTROLLER
  * ================================================
  * Handles sidebar filtering, price ranges, search, sort,
  * and category counters on shop.html.

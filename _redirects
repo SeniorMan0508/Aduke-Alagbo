@@ -1,6 +1,7 @@
 # Route order and reset emails to Netlify Functions (port 587 without Render SMTP block)
-/api/orders/notify-email     /.netlify/functions/notify-email     200
-/api/auth/send-reset-email   /.netlify/functions/send-reset-email 200
+/api/orders/notify-email             /.netlify/functions/notify-email                    200
+/api/orders/confirm-payment-email    /.netlify/functions/customer-payment-confirmed-email 200
+/api/auth/send-reset-email           /.netlify/functions/send-reset-email                200
 
 # Proxy all other API requests (admin auth, products, reviews) to Render backend
 /api/*  https://quad-ace-herbs.onrender.com/api/:splat  200!

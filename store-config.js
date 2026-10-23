@@ -1,5 +1,5 @@
 /**
- * QUAD-ACE HERBS - STORE CONFIGURATION
+ * ADUKE ALAGBO - STORE CONFIGURATION
  * =====================================
  * You can easily edit your bank details, phone number, currency,
  * and delivery rates right here in this file!
@@ -7,9 +7,9 @@
 
 const STORE_CONFIG = {
   // Brand Information
-  storeName: "Quad-Ace Herbs",
+  storeName: "Aduke Alagbo",
   backendUrl: "https://quad-ace-herbs.onrender.com",
-  logoImage: "images/bg-image.jpeg",
+  logoImage: "images/aduke-alagbo-logo.jpeg",
   tagline: "Authentic Ancestral Remedies • 100% Wildcrafted African Botanicals",
   established: "2018",
 
@@ -37,7 +37,7 @@ const STORE_CONFIG = {
     bankName: "Kuda Bank",               // Change to her bank (e.g. GTBank, Zenith Bank, Access, OPay, etc.)
     accountNumber: "2023980523",           // Put her 10-digit NUBAN account number
     accountName: "Badmus Daniel Ayodapo",         // Put the exact account name registered with the bank
-    transferInstructions: "Please use your Order Number (e.g. #QA-1234) as the transfer description/narration. Once transferred, click 'Confirm Payment' to notify us on WhatsApp immediately."
+    transferInstructions: "Please use your Order Number (e.g. #AA-1234) as the transfer description/narration. Once transferred, click 'Confirm Payment' to notify us on WhatsApp immediately."
   },
 
   // Delivery Options & Fees
@@ -65,6 +65,7 @@ const STORE_CONFIG = {
 
   // Promo & Coupon Codes
   discounts: {
+    "ADUKE10": { type: "percentage", value: 10, label: "10% Aduke Alagbo Welcome Discount" },
     "QUADACE10": { type: "percentage", value: 10, label: "10% Welcome Discount" },
     "AGBOLOVE": { type: "fixed", value: 2000, label: "₦2,000 Special Wellness Voucher" },
     "VITALITY": { type: "percentage", value: 15, label: "15% Herbal Vitality Promo" }

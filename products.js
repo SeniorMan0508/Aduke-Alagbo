@@ -1,5 +1,5 @@
 /**
- * QUAD-ACE HERBS - PRODUCT CATALOG
+ * ADUKE ALAGBO - PRODUCT CATALOG
  * =================================
  * Real, authentic herbal remedies with complete traditional benefits,
  * ingredients, dosage, and pricing in Naira.
@@ -293,7 +293,9 @@ const QUADACE_STORAGE_KEYS = {
   CUSTOM_PRODUCTS: "quadace_custom_products",
   DELETED_PRODUCTS: "quadace_deleted_products",
   CUSTOM_CATEGORIES: "quadace_custom_categories",
-  DELETED_CATEGORIES: "quadace_deleted_categories"
+  DELETED_CATEGORIES: "quadace_deleted_categories",
+  ORDERS: "quadace_orders",
+  INVENTORY: "quadace_inventory"
 };
 
 /**
@@ -570,4 +572,473 @@ function exportStoreProductsJSON() {
   dlAnchorElem.setAttribute("download", `quadace_catalog_${new Date().toISOString().slice(0, 10)}.json`);
   dlAnchorElem.click();
 }
+
+// ==========================================================================
+// CUSTOMER PURCHASES & PRODUCT INVENTORY TRACKING STORE
+// ==========================================================================
+
+const DEFAULT_STORE_ORDERS = [
+  {
+    orderRef: "#QA-84920",
+    customer: {
+      name: "Mrs. Funmilayo Adeleke",
+      phone: "+234 803 456 7891",
+      email: "funmi.adeleke@gmail.com",
+      address: "Block 4, Flat 2, Admiralty Way, Lekki Phase 1, Lagos State",
+      notes: "Please call my security gate on arrival. Deliver before 3 PM if possible."
+    },
+    senderDetails: {
+      bank: "GTBank",
+      name: "Funmilayo Adeleke",
+      sessionId: "00001324090543219"
+    },
+    receiptProof: {
+      hasReceipt: true,
+      fileName: "gtbank_transfer_receipt.jpg",
+      dataUrl: "images/agbo-jedi.jpg",
+      sessionId: "00001324090543219"
+    },
+    items: [
+      {
+        id: "agbo-jedi-extra",
+        name: "Agbo Jedi-Jedi Extra Strength",
+        price: 6500,
+        quantity: 2,
+        image: "images/agbo-jedi.jpg",
+        category: "agbo"
+      },
+      {
+        id: "raw-ancestral-roots",
+        name: "Raw Ancestral Boiling Roots Bundle (Gbogbonise)",
+        price: 5500,
+        quantity: 1,
+        image: "images/ancestral-roots.jpg",
+        category: "raw"
+      }
+    ],
+    shippingMethod: "nationwide",
+    shippingFee: 0,
+    discount: 0,
+    subtotal: 18500,
+    finalTotal: 18500,
+    paymentMethod: "bank",
+    status: "verified",
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    statusHistory: [
+      { status: "pending", timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), note: "Customer submitted bank transfer proof" },
+      { status: "verified", timestamp: new Date(Date.now() - 100 * 60 * 1000).toISOString(), note: "Admin verified Kuda Bank transfer alert of ₦18,500" }
+    ]
+  },
+  {
+    orderRef: "#QA-93014",
+    customer: {
+      name: "Alhaji Ibrahim Danjuma",
+      phone: "+234 812 345 6789",
+      email: "ibrahim.d@yahoo.com",
+      address: "Plot 14, Gwarinpa Estate, 3rd Avenue, Abuja, FCT",
+      notes: "Kindly double-seal the bottles securely for courier travel."
+    },
+    senderDetails: {
+      bank: "Zenith Bank",
+      name: "Ibrahim Danjuma",
+      sessionId: "00002819384729103"
+    },
+    receiptProof: {
+      hasReceipt: true,
+      fileName: "zenith_transfer_receipt.jpg",
+      dataUrl: "images/man-power.jpg",
+      sessionId: "00002819384729103"
+    },
+    items: [
+      {
+        id: "man-power-vitality",
+        name: "Man-Power Virility & Stamina Roots Infusion",
+        price: 9500,
+        quantity: 2,
+        image: "images/man-power.jpg",
+        category: "men"
+      }
+    ],
+    shippingMethod: "nationwide",
+    shippingFee: 0,
+    discount: 0,
+    subtotal: 19000,
+    finalTotal: 19000,
+    paymentMethod: "bank",
+    status: "dispatched",
+    createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    statusHistory: [
+      { status: "pending", timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString() },
+      { status: "verified", timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString() },
+      { status: "dispatched", timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), note: "Handed over to interstate courier dispatch rider" }
+    ]
+  },
+  {
+    orderRef: "#QA-58291",
+    customer: {
+      name: "Dr. Folashade Babatunde",
+      phone: "+234 902 112 3344",
+      email: "dr.folashade@gmail.com",
+      address: "12 Quarry Road, Ibara, Abeokuta, Ogun State",
+      notes: "Local dispatch rider can deliver anytime today."
+    },
+    senderDetails: {
+      bank: "Kuda Bank",
+      name: "Folashade Babatunde",
+      sessionId: "20239805230912"
+    },
+    receiptProof: {
+      hasReceipt: true,
+      fileName: "kuda_payment_proof.jpg",
+      dataUrl: "images/hormonal-balance.jpg",
+      sessionId: "20239805230912"
+    },
+    items: [
+      {
+        id: "queens-hormonal-balance",
+        name: "Queen's Hormonal Balance & Womb Cleanse",
+        price: 8500,
+        quantity: 1,
+        image: "images/hormonal-balance.jpg",
+        category: "women"
+      },
+      {
+        id: "agbo-idakole-blend",
+        name: "Agbo Idakole Herbal Cleanser",
+        price: 6000,
+        quantity: 1,
+        image: "images/agbo-jedi.jpg",
+        category: "agbo"
+      }
+    ],
+    shippingMethod: "local",
+    shippingFee: 2500,
+    discount: 0,
+    subtotal: 14500,
+    finalTotal: 17000,
+    paymentMethod: "bank",
+    status: "pending",
+    createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+    statusHistory: [
+      { status: "pending", timestamp: new Date(Date.now() - 25 * 60 * 1000).toISOString(), note: "Awaiting owner verification of Kuda Bank alert" }
+    ]
+  },
+  {
+    orderRef: "#QA-41908",
+    customer: {
+      name: "Emeka Okonkwo",
+      phone: "+234 807 889 9112",
+      email: "emeka.ok@outlook.com",
+      address: "5 Commercial Avenue, Yaba, Lagos State",
+      notes: "Purchased directly via WhatsApp customer inquiry."
+    },
+    senderDetails: {
+      bank: "OPay",
+      name: "Emeka Okonkwo",
+      sessionId: "OPAY-77129031"
+    },
+    receiptProof: {
+      hasReceipt: false
+    },
+    items: [
+      {
+        id: "man-power-vitality",
+        name: "Man-Power Virility & Stamina Roots Infusion",
+        price: 9500,
+        quantity: 1,
+        image: "images/man-power.jpg",
+        category: "men"
+      },
+      {
+        id: "agbo-jedi-extra",
+        name: "Agbo Jedi-Jedi Extra Strength",
+        price: 6500,
+        quantity: 1,
+        image: "images/agbo-jedi.jpg",
+        category: "agbo"
+      }
+    ],
+    shippingMethod: "nationwide",
+    shippingFee: 0,
+    discount: 0,
+    subtotal: 16000,
+    finalTotal: 16000,
+    paymentMethod: "whatsapp",
+    status: "delivered",
+    createdAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
+    statusHistory: [
+      { status: "pending", timestamp: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString() },
+      { status: "verified", timestamp: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() },
+      { status: "dispatched", timestamp: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString() },
+      { status: "delivered", timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), note: "Delivered safely to customer in Yaba" }
+    ]
+  }
+];
+
+/**
+ * Retrieve all orders recorded on the website.
+ */
+function getStoreOrders() {
+  try {
+    const raw = localStorage.getItem(QUADACE_STORAGE_KEYS.ORDERS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn("Could not read orders from localStorage", e);
+  }
+  // Initialize with authentic seed orders so the owner sees rich data immediately
+  try {
+    localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(DEFAULT_STORE_ORDERS));
+  } catch (e) {}
+  return [...DEFAULT_STORE_ORDERS];
+}
+
+/**
+ * Save a new incoming customer order to local store and update product inventory.
+ */
+function saveStoreOrder(order) {
+  if (!order || !order.orderRef) return false;
+  let orders = getStoreOrders();
+
+  // If already exists, update it; otherwise add to the very top (newest first)
+  const existingIdx = orders.findIndex(o => o.orderRef === order.orderRef);
+  if (existingIdx >= 0) {
+    orders[existingIdx] = { ...orders[existingIdx], ...order };
+  } else {
+    orders.unshift(order);
+  }
+
+  try {
+    localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(orders));
+  } catch (e) {
+    console.error("Failed to save order to localStorage:", e);
+  }
+
+  // Update inventory remaining and units sold for each product in this order
+  if (Array.isArray(order.items)) {
+    order.items.forEach(item => {
+      const qty = Number(item.quantity) || 1;
+      adjustProductStock(item.id, -qty, qty);
+    });
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent("quadace_new_order_saved", { detail: order }));
+  } catch (e) {}
+
+  return true;
+}
+
+/**
+ * Update the status of an existing customer order.
+ */
+function updateStoreOrderStatus(orderRef, newStatus, note = "") {
+  const orders = getStoreOrders();
+  const order = orders.find(o => o.orderRef === orderRef);
+  if (!order) return false;
+
+  order.status = newStatus;
+  order.updatedAt = new Date().toISOString();
+  if (!Array.isArray(order.statusHistory)) {
+    order.statusHistory = [];
+  }
+  order.statusHistory.push({
+    status: newStatus,
+    timestamp: new Date().toISOString(),
+    note: note || `Order marked as ${newStatus}`
+  });
+
+  try {
+    localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(orders));
+    window.dispatchEvent(new CustomEvent("quadace_order_status_updated", { detail: { orderRef, newStatus } }));
+  } catch (e) {}
+
+  return true;
+}
+
+/**
+ * Delete an order from store records.
+ */
+function deleteStoreOrder(orderRef) {
+  let orders = getStoreOrders();
+  orders = orders.filter(o => o.orderRef !== orderRef);
+  try {
+    localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(orders));
+  } catch (e) {}
+  return true;
+}
+
+/**
+ * Retrieve inventory stock records for all remedies.
+ */
+function getStoreInventory() {
+  try {
+    const raw = localStorage.getItem(QUADACE_STORAGE_KEYS.INVENTORY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === "object" && parsed !== null) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+
+  // Initialize stock defaults: default remedies have starting stock of 30 bottles each
+  const initialInventory = {};
+  const allProducts = getStoreProducts();
+  allProducts.forEach(p => {
+    initialInventory[p.id] = {
+      stock: 35,
+      lowStockThreshold: 8,
+      lastRestocked: new Date().toISOString()
+    };
+  });
+
+  // Deduct units already ordered in seed orders
+  const orders = getStoreOrders();
+  orders.forEach(ord => {
+    if (ord.status !== "cancelled" && Array.isArray(ord.items)) {
+      ord.items.forEach(it => {
+        if (initialInventory[it.id]) {
+          initialInventory[it.id].stock = Math.max(0, initialInventory[it.id].stock - (Number(it.quantity) || 1));
+        }
+      });
+    }
+  });
+
+  try {
+    localStorage.setItem(QUADACE_STORAGE_KEYS.INVENTORY, JSON.stringify(initialInventory));
+  } catch (e) {}
+
+  return initialInventory;
+}
+
+/**
+ * Adjust stock count for a specific product.
+ */
+function adjustProductStock(productId, stockChange, unitsSoldChange = 0) {
+  const inventory = getStoreInventory();
+  if (!inventory[productId]) {
+    inventory[productId] = { stock: 30, lowStockThreshold: 8, lastRestocked: new Date().toISOString() };
+  }
+
+  inventory[productId].stock = Math.max(0, (inventory[productId].stock || 0) + stockChange);
+  inventory[productId].updatedAt = new Date().toISOString();
+
+  try {
+    localStorage.setItem(QUADACE_STORAGE_KEYS.INVENTORY, JSON.stringify(inventory));
+  } catch (e) {}
+
+  return inventory[productId].stock;
+}
+
+/**
+ * Set stock quantity and alert threshold directly for a product.
+ */
+function setStoreProductStock(productId, newStockQty, lowStockThreshold = 8) {
+  const inventory = getStoreInventory();
+  inventory[productId] = {
+    stock: Math.max(0, parseInt(newStockQty, 10) || 0),
+    lowStockThreshold: Math.max(1, parseInt(lowStockThreshold, 10) || 8),
+    lastRestocked: new Date().toISOString()
+  };
+
+  try {
+    localStorage.setItem(QUADACE_STORAGE_KEYS.INVENTORY, JSON.stringify(inventory));
+  } catch (e) {}
+
+  return inventory[productId];
+}
+
+/**
+ * Compute real-time product performance analytics across all customer orders.
+ * Returns an array of remedies with: unitsSold, totalRevenue, orderCount, stock, and stockStatus.
+ */
+function getProductSalesStats() {
+  const products = getStoreProducts();
+  const orders = getStoreOrders();
+  const inventory = getStoreInventory();
+
+  // Aggregate stats per product ID
+  const statsMap = {};
+  products.forEach(p => {
+    const inv = inventory[p.id] || { stock: 30, lowStockThreshold: 8 };
+    statsMap[p.id] = {
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      categoryLabel: p.categoryLabel,
+      image: p.image,
+      price: p.price,
+      unitsSold: 0,
+      totalRevenue: 0,
+      orderCount: 0,
+      stock: inv.stock !== undefined ? inv.stock : 30,
+      lowStockThreshold: inv.lowStockThreshold || 8,
+      lastPurchasedAt: null
+    };
+  });
+
+  orders.forEach(order => {
+    if (order.status === "cancelled") return; // Skip cancelled orders
+    if (Array.isArray(order.items)) {
+      order.items.forEach(it => {
+        const prodId = it.id;
+        if (!statsMap[prodId]) {
+          // If custom product or unrecognized ID
+          statsMap[prodId] = {
+            id: prodId,
+            name: it.name,
+            category: it.category || "agbo",
+            categoryLabel: it.category ? (CATEGORY_LABELS[it.category] || "Herbal Remedy") : "Herbal Remedy",
+            image: it.image || "images/agbo-jedi.jpg",
+            price: it.price || 0,
+            unitsSold: 0,
+            totalRevenue: 0,
+            orderCount: 0,
+            stock: 20,
+            lowStockThreshold: 5,
+            lastPurchasedAt: null
+          };
+        }
+
+        const qty = Number(it.quantity) || 1;
+        const lineTotal = Number(it.price || statsMap[prodId].price || 0) * qty;
+
+        statsMap[prodId].unitsSold += qty;
+        statsMap[prodId].totalRevenue += lineTotal;
+        statsMap[prodId].orderCount += 1;
+        if (!statsMap[prodId].lastPurchasedAt || new Date(order.createdAt) > new Date(statsMap[prodId].lastPurchasedAt)) {
+          statsMap[prodId].lastPurchasedAt = order.createdAt;
+        }
+      });
+    }
+  });
+
+  const list = Object.values(statsMap);
+
+  // Compute stockStatus and sort by unitsSold descending
+  list.forEach(item => {
+    if (item.stock <= 0) {
+      item.stockStatus = "out_of_stock";
+    } else if (item.stock <= item.lowStockThreshold) {
+      item.stockStatus = "low_stock";
+    } else {
+      item.stockStatus = "in_stock";
+    }
+  });
+
+  list.sort((a, b) => b.unitsSold - a.unitsSold);
+
+  // Assign bestseller ranks (1, 2, 3...)
+  list.forEach((item, idx) => {
+    item.rank = idx + 1;
+  });
+
+  return list;
+}
+
 

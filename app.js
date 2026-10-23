@@ -30,16 +30,17 @@
   }
 
   // --- HELPER: API BASE URL (Seamlessly supports laptop localhost, phone on Wi-Fi, and Netlify / Render) ---
+  const CLOUD_API_BASE = "https://quad-ace-herbs.onrender.com";
+
   function getApiBaseUrl() {
-    if (window.location.protocol === "file:") {
-      return "http://localhost:3000";
+    if (typeof window === "undefined") return CLOUD_API_BASE;
+    if (window.location.hostname.includes("onrender.com")) {
+      return "";
     }
-    // If running in local development on any custom port (e.g. Live Server port 5500 on laptop or mobile)
-    if (window.location.port && window.location.port !== "3000") {
-      return `${window.location.protocol}//${window.location.hostname}:3000`;
+    if (window.location.hostname === "localhost" && window.location.port === "3000") {
+      return "";
     }
-    // In production (Netlify or custom domain), return "" so Netlify _redirects proxies seamlessly
-    return "";
+    return CLOUD_API_BASE;
   }
 
   // --- LOCAL STORAGE CART PERSISTENCE ---
@@ -127,7 +128,7 @@
       location: "Lekki, Lagos",
       rating: 5,
       remedy: "Agbo Jedi-Jedi Extra Strength",
-      comment: "I had suffered from severe Jedi-Jedi and lower back pain for over 8 months. Sitting in traffic was pure torture. After just 4 days of taking Quad-Ace Agbo Jedi Extra Strength, the waist stiffness completely dissolved. This is the real deal!",
+      comment: "I had suffered from severe Jedi-Jedi and lower back pain for over 8 months. Sitting in traffic was pure torture. After just 4 days of taking Aduke Alagbo Agbo Jedi Extra Strength, the waist stiffness completely dissolved. This is the real deal!",
       verifiedBuyer: true,
       createdAt: "2026-09-28T10:30:00.000Z"
     },
@@ -147,7 +148,7 @@
       location: "London, United Kingdom",
       rating: 5,
       remedy: "Queen's Hormonal Balance",
-      comment: "I ordered the Queen's Hormonal Balance tea from the UK via DHL. It arrived in London in just 4 days! My cycle that had seized for 3 months returned naturally with zero pain. God bless Quad-Ace Herbs!",
+      comment: "I ordered the Queen's Hormonal Balance tea from the UK via DHL. It arrived in London in just 4 days! My cycle that had seized for 3 months returned naturally with zero pain. God bless Aduke Alagbo!",
       verifiedBuyer: true,
       createdAt: "2026-10-04T09:45:00.000Z"
     },
@@ -157,7 +158,7 @@
       location: "Ibadan, Oyo State",
       rating: 5,
       remedy: "Raw Prekese & Roots Bundle",
-      comment: "The Bitter Kola & Prekese pod infusion cleared my morning fatigue and bloating within a week. Authentic herbs, properly prepared. Quad-Ace Herbs is now my family's go-to apothecary.",
+      comment: "The Bitter Kola & Prekese pod infusion cleared my morning fatigue and bloating within a week. Authentic herbs, properly prepared. Aduke Alagbo is now my family's go-to apothecary.",
       verifiedBuyer: true,
       createdAt: "2026-10-06T16:20:00.000Z"
     }
@@ -428,7 +429,7 @@
       const cust = order.customer || {};
       const remedyName = (order.items && order.items.length > 0 && order.items[0].name)
         ? order.items[0].name
-        : "Quad-Ace Herbs Traditional Formulation";
+        : "Aduke Alagbo Traditional Formulation";
 
       let location = "Abeokuta, Nigeria";
       if (cust.city && cust.state) {
@@ -992,7 +993,7 @@
 
     // WhatsApp Direct Inquiry link
     const waBtn = document.getElementById("qvWhatsAppBtn");
-    const waText = encodeURIComponent(`Hello Quad-Ace Herbs, I would like to inquire about ${product.name} (${formatMoney(product.price)}).`);
+    const waText = encodeURIComponent(`Hello Aduke Alagbo, I would like to inquire about ${product.name} (${formatMoney(product.price)}).`);
     waBtn.href = `https://wa.me/${STORE_CONFIG.whatsappNumber}?text=${waText}`;
 
     // Show modal
@@ -1515,7 +1516,7 @@ ${transferSessionId ? `• *Session ID / Ref:* ${transferSessionId}\n` : ""}• 
       : "images/bg-image.jpeg";
 
     const waMessageText = 
-`*QUAD-ACE HERBS - OFFICIAL STORE ORDER*
+`*ADUKE ALAGBO - OFFICIAL STORE ORDER*
 🖼️ *Store Logo:* ${storeLogoUrl}
 ━━━━━━━━━━━━━━━━━━━━
 *Order Ref:* ${orderData.orderRef}
@@ -1538,16 +1539,35 @@ ${orderData.discount > 0 ? `*Discount:* -${formatMoney(orderData.discount)}\n` :
 ━━━━━━━━━━━━━━━━━━━━
 *Payment Method:* ${paymentLabel}
 
-Please verify the payment alert and confirm dispatch! Thank you for choosing Quad-Ace Herbs.`;
+Please verify the payment alert and confirm dispatch! Thank you for choosing Aduke Alagbo.`;
 
     const encodedWaMessage = encodeURIComponent(waMessageText);
     const waLink = `https://wa.me/${STORE_CONFIG.whatsappNumber}?text=${encodedWaMessage}`;
 
+    // PERSIST ORDER IN STORE & UPDATE INVENTORY
+    if (typeof saveStoreOrder === "function") {
+      saveStoreOrder(orderData);
+    }
+
+    // POST TO BACKEND ORDER API
+    const orderApiUrl = (window.location.hostname.includes("onrender.com"))
+      ? "https://quad-ace-herbs.onrender.com/api/orders"
+      : `${getApiBaseUrl()}/api/orders`;
+
+    fetch(orderApiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(orderData)
+    })
+    .then(res => res.json())
+    .then(data => console.log("[ORDER TRACKING] Order synced to backend API:", data))
+    .catch(err => console.warn("[ORDER TRACKING] Backend sync:", err));
+
     // DEDICATED EMAIL DISPATCH WITH EMBEDDED BRAND LOGO & RICH ORDER STYLING:
-    // (Bypasses cloud host SMTP restrictions by using Netlify serverless function on Render)
-    const emailEndpoint = (window.location.hostname.includes("onrender.com"))
-      ? "https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email"
-      : `${getApiBaseUrl()}/api/orders/notify-email`;
+    // Netlify Serverless Function uses port 587 without cloud SMTP blocking
+    const emailEndpoint = (window.location.hostname === "localhost" && window.location.port === "3000")
+      ? "/api/orders/notify-email"
+      : "https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email";
 
     fetch(emailEndpoint, {
       method: "POST",
@@ -1556,7 +1576,14 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Qua
     })
     .then(res => res.json())
     .then(data => console.log("[ORDER NOTIFICATION] Branded order email sent:", data))
-    .catch(err => console.warn("[ORDER NOTIFICATION] Backend email endpoint:", err));
+    .catch(err => {
+      console.warn("[ORDER NOTIFICATION] Primary email dispatch failed, trying direct Netlify:", err);
+      fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData)
+      }).catch(e => console.warn("[ORDER NOTIFICATION] Final fallback failed:", e));
+    });
 
     // Close Checkout Modal & Open Receipt
     closeCheckoutModal();
@@ -1578,6 +1605,7 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Qua
   }
 
   // --- RECEIPT MODAL ---
+  // --- RECEIPT MODAL ---
   function showReceiptModal(order, waLink) {
     document.getElementById("receiptOrderRef").textContent = order.orderRef;
     document.getElementById("receiptCustName").textContent = order.customer.name;
@@ -1589,48 +1617,110 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Qua
     const iconEl = document.getElementById("receiptStatusIcon");
     const titleEl = document.getElementById("receiptStatusTitle");
     const descEl = document.getElementById("receiptStatusDesc");
+    const bankBox = document.getElementById("receiptBankConfirmationBox");
+    const waBox = document.getElementById("receiptWhatsAppPromptBox");
 
-    if (order.paymentMethod === "bank") {
-      if (order.receiptProof && order.receiptProof.hasReceipt) {
+    function renderReceiptStatus(status) {
+      if (status === "verified" || status === "dispatched" || status === "delivered") {
         if (statusEl) {
-          statusEl.textContent = "🟢 Proof Attached — Verifying Bank Alert";
+          statusEl.textContent = "🟢 Payment Confirmed & Verified (Success) ✓";
+          statusEl.style.color = "#15803d";
+          statusEl.style.fontWeight = "800";
+        }
+        if (iconEl) {
+          iconEl.textContent = "✅";
+          iconEl.style.background = "#dcfce7";
+          iconEl.style.color = "#15803d";
+          iconEl.style.borderColor = "#86efac";
+          iconEl.style.boxShadow = "0 0 15px rgba(22, 163, 74, 0.4)";
+        }
+        if (titleEl) {
+          titleEl.textContent = "Payment Successfully Confirmed! 🎉";
+          titleEl.style.color = "#166534";
+        }
+        if (descEl) {
+          descEl.innerHTML = `
+            <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 14px; margin: 10px 0; text-align: left;">
+              <p style="margin: 0 0 6px 0; color: #15803d; font-weight: 800; font-size: 0.96rem;">
+                ✓ Aduke Alagbo has verified your payment alert!
+              </p>
+              <p style="margin: 0 0 8px 0; color: #166534; font-size: 0.88rem; line-height: 1.5;">
+                An official confirmation receipt has been sent to your email (<strong>${order.customer.email || 'your email'}</strong>).
+              </p>
+              <p style="margin: 0; color: #475569; font-size: 0.82rem; line-height: 1.4;">
+                🌿 Your authentic herbal remedies are now being freshly prepared and packaged for dispatch. Our delivery rider will contact you on <strong>${order.customer.phone}</strong> before arrival!
+              </p>
+            </div>
+          `;
+        }
+        if (bankBox) {
+          bankBox.innerHTML = `
+            <div style="background: #e8f7ee; border: 1.5px solid #86efac; border-radius: 8px; padding: 12px; text-align: center; color: #15803d; font-weight: 700; font-size: 0.88rem;">
+              ✓ Payment Verified in Kuda Bank • Preparing Package for Dispatch
+            </div>
+          `;
+        }
+        return true;
+      }
+
+      // Default Pending Status (Awaiting admin verification)
+      if (order.paymentMethod === "bank") {
+        if (order.receiptProof && order.receiptProof.hasReceipt) {
+          if (statusEl) {
+            statusEl.textContent = "🟡 Proof Attached — Verifying Bank Alert";
+            statusEl.style.color = "#b45309";
+            statusEl.style.fontWeight = "700";
+          }
+          if (iconEl) {
+            iconEl.textContent = "🧾";
+            iconEl.style.background = "rgba(245, 158, 11, 0.15)";
+            iconEl.style.color = "#b45309";
+            iconEl.style.borderColor = "#fde68a";
+            iconEl.style.boxShadow = "none";
+          }
+          if (titleEl) {
+            titleEl.textContent = "Proof of Payment Received! ⏳";
+            titleEl.style.color = "var(--deep-forest)";
+          }
+          if (descEl) {
+            descEl.innerHTML = "Your order is placed and your transfer receipt screenshot is recorded! <strong>Aduke Alagbo is verifying the payment alert in her Kuda bank account. Once confirmed in her dashboard, this screen will automatically change to Success and your confirmation email will be sent!</strong>";
+          }
+        } else {
+          if (statusEl) {
+            statusEl.textContent = "🟡 Awaiting Bank Alert Verification";
+            statusEl.style.color = "#d97706";
+            statusEl.style.fontWeight = "700";
+          }
+          if (iconEl) {
+            iconEl.textContent = "⏳";
+            iconEl.style.background = "rgba(245, 158, 11, 0.15)";
+            iconEl.style.color = "#d97706";
+            iconEl.style.borderColor = "#fde68a";
+            iconEl.style.boxShadow = "none";
+          }
+          if (titleEl) {
+            titleEl.textContent = "Order Submitted — Awaiting Verification";
+            titleEl.style.color = "var(--deep-forest)";
+          }
+          if (descEl) {
+            descEl.innerHTML = "Your order has been registered! <strong>Aduke Alagbo will verify the payment alert in her bank account. As soon as she confirms, your status automatically updates to Success here and you'll receive a confirmation email!</strong>";
+          }
+        }
+      } else {
+        if (statusEl) {
+          statusEl.textContent = "💬 Order via WhatsApp (Pending Confirmation)";
           statusEl.style.color = "#27ae60";
         }
         if (iconEl) {
-          iconEl.textContent = "🧾";
+          iconEl.textContent = "💬";
           iconEl.style.background = "rgba(39, 174, 96, 0.15)";
           iconEl.style.color = "#27ae60";
           iconEl.style.borderColor = "#27ae60";
         }
-        if (titleEl) titleEl.textContent = "Proof of Payment Received! 🌿";
-        if (descEl) descEl.innerHTML = "Your order is placed and your transfer proof has been recorded! <strong>Quad-Ace Herbs will verify the payment alert in her Kuda bank account and dispatch your package immediately.</strong>";
-      } else {
-        if (statusEl) {
-          statusEl.textContent = "🟡 Awaiting Bank Alert Verification";
-          statusEl.style.color = "#d35400";
-        }
-        if (iconEl) {
-          iconEl.textContent = "⏳";
-          iconEl.style.background = "rgba(243, 156, 18, 0.15)";
-          iconEl.style.color = "#d35400";
-          iconEl.style.borderColor = "#d35400";
-        }
-        if (titleEl) titleEl.textContent = "Order Submitted — Awaiting Verification";
-        if (descEl) descEl.innerHTML = "Your order has been registered! <strong>Quad-Ace Herbs will verify the payment alert in her bank account before dispatching your package.</strong>";
+        if (titleEl) titleEl.textContent = "WhatsApp Order Ready! 💬";
+        if (descEl) descEl.innerHTML = "Your order details have been prepared for direct confirmation on WhatsApp.";
       }
-    } else {
-      if (statusEl) {
-        statusEl.textContent = "💬 Order via WhatsApp (Pending Confirmation)";
-        statusEl.style.color = "#27ae60";
-      }
-      if (iconEl) {
-        iconEl.textContent = "💬";
-        iconEl.style.background = "rgba(39, 174, 96, 0.15)";
-        iconEl.style.color = "#27ae60";
-        iconEl.style.borderColor = "#27ae60";
-      }
-      if (titleEl) titleEl.textContent = "WhatsApp Order Ready! 💬";
-      if (descEl) descEl.innerHTML = "Your order details have been prepared for direct confirmation on WhatsApp.";
+      return false;
     }
 
     // Proof of Payment preview box in receipt modal
@@ -1678,9 +1768,6 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Qua
     document.getElementById("receiptTotalAmount").textContent = formatMoney(order.finalTotal);
 
     // Show Confirmation Notice for Bank Transfer vs Action Button for WhatsApp Order
-    const bankBox = document.getElementById("receiptBankConfirmationBox");
-    const waBox = document.getElementById("receiptWhatsAppPromptBox");
-
     if (order.paymentMethod === "bank") {
       if (bankBox) bankBox.style.display = "block";
       if (waBox) waBox.style.display = "none";
@@ -1690,7 +1777,7 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Qua
         waBox.style.display = "block";
         const waBtn = document.getElementById("receiptWhatsAppNotifyBtn");
         if (waBtn) {
-          waBtn.innerHTML = `<span>💬 Send Order to Quad-Ace Herbs on WhatsApp</span>`;
+          waBtn.innerHTML = `<span>💬 Send Order to Aduke Alagbo on WhatsApp</span>`;
           waBtn.onclick = () => window.open(waLink, "_blank");
         }
       }
@@ -1711,6 +1798,83 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Qua
       updateStarPickerUI("receiptStarRating", "receiptRatingText", 5);
     }
 
+    // Initial render of status UI
+    const isAlreadyVerified = renderReceiptStatus(order.status || "pending");
+
+    // Clear any existing poller
+    if (state.receiptStatusWatcher) {
+      clearInterval(state.receiptStatusWatcher);
+      state.receiptStatusWatcher = null;
+    }
+
+    // LIVE STATUS WATCHER:
+    // Real-time listener that watches for Aduke Alagbo verifying the payment alert in her admin dashboard!
+    if (!isAlreadyVerified && (order.status === "pending" || !order.status)) {
+      const checkAndUpdateLive = async () => {
+        let verifiedStatus = null;
+
+        // 1. Check local storage
+        if (typeof getStoreOrders === "function") {
+          const localOrders = getStoreOrders();
+          const found = localOrders.find(o => o.orderRef === order.orderRef || o.orderRef === order.orderRef.replace(/^#/, ''));
+          if (found && (found.status === "verified" || found.status === "dispatched" || found.status === "delivered")) {
+            verifiedStatus = found.status;
+          }
+        }
+
+        // 2. Check backend server API
+        if (!verifiedStatus) {
+          try {
+            const cleanRef = order.orderRef.replace(/^#/, '');
+            const res = await fetch(`${getApiBaseUrl()}/api/orders`);
+            if (res.ok) {
+              const data = await res.json();
+              const serverOrders = data.orders || [];
+              const foundServer = serverOrders.find(o => o.orderRef === order.orderRef || o.orderRef === `#${cleanRef}` || o.orderRef === cleanRef);
+              if (foundServer && (foundServer.status === "verified" || foundServer.status === "dispatched" || foundServer.status === "delivered")) {
+                verifiedStatus = foundServer.status;
+              }
+            }
+          } catch (e) {}
+        }
+
+        if (verifiedStatus) {
+          order.status = verifiedStatus;
+          renderReceiptStatus(verifiedStatus);
+          showToast(`🎉 Payment Confirmed! Aduke Alagbo verified your alert.`, "✓");
+          if (state.receiptStatusWatcher) {
+            clearInterval(state.receiptStatusWatcher);
+            state.receiptStatusWatcher = null;
+          }
+        }
+      };
+
+      // Listen for window event dispatched when admin confirms payment in another tab
+      const onStatusUpdated = (e) => {
+        if (e.detail && (e.detail.orderRef === order.orderRef || e.detail.orderRef === order.orderRef.replace(/^#/, ''))) {
+          if (e.detail.newStatus === "verified" || e.detail.newStatus === "dispatched" || e.detail.newStatus === "delivered") {
+            order.status = e.detail.newStatus;
+            renderReceiptStatus(e.detail.newStatus);
+            showToast(`🎉 Payment Confirmed! Aduke Alagbo verified your alert.`, "✓");
+            if (state.receiptStatusWatcher) {
+              clearInterval(state.receiptStatusWatcher);
+              state.receiptStatusWatcher = null;
+            }
+          }
+        }
+      };
+
+      window.addEventListener("quadace_order_status_updated", onStatusUpdated, { once: true });
+      window.addEventListener("storage", (e) => {
+        if (e.key === "quadace_orders") {
+          checkAndUpdateLive();
+        }
+      });
+
+      // Poll every 3 seconds while receipt modal is open
+      state.receiptStatusWatcher = setInterval(checkAndUpdateLive, 3000);
+    }
+
     const receiptOverlay = document.getElementById("receiptModalOverlay");
     if (receiptOverlay) {
       receiptOverlay.classList.add("active");
@@ -1719,6 +1883,10 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Qua
   }
 
   function closeReceiptModal() {
+    if (state.receiptStatusWatcher) {
+      clearInterval(state.receiptStatusWatcher);
+      state.receiptStatusWatcher = null;
+    }
     const receiptOverlay = document.getElementById("receiptModalOverlay");
     if (receiptOverlay) receiptOverlay.classList.remove("active");
     checkAnyModalActive();

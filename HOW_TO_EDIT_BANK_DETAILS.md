@@ -1,4 +1,4 @@
-# 🌿 Quad-Ace Herbs — How to Edit Bank & Store Details
+# 🌿 Aduke Alagbo — How to Edit Bank & Store Details
 
 You can change the seller's bank details, phone number, delivery fees, or store details at any time in **less than 60 seconds**!
 
@@ -17,7 +17,7 @@ Look for lines 24–33 in `store-config.js`:
   bankDetails: {
     bankName: "Access Bank",               // Put her bank name (e.g. GTBank, Zenith, Access, OPay, Palmpay)
     accountNumber: "0123456789",           // Put her 10-digit NUBAN account number
-    accountName: "QUAD-ACE HERBS",         // Put the account name registered with the bank
+    accountName: "ADUKE ALAGBO",         // Put the account name registered with the bank
     transferInstructions: "Please use your Order Number or Name as the transfer narration..."
   },
 ```
@@ -25,7 +25,7 @@ Look for lines 24–33 in `store-config.js`:
 Simply replace:
 - `"Access Bank"` with her actual bank (e.g. `"Guaranty Trust Bank"`, `"Kuda Bank"` or `"OPay"`).
 - `"0123456789"` with her actual 10-digit account number.
-- `"QUAD-ACE HERBS"` with her actual bank account holder name.
+- `"ADUKE ALAGBO"` with her actual bank account holder name.
 
 **Save the file (`Ctrl + S`)** and refresh the browser. The bank details in the checkout modal and bank transfer guide update immediately!
 

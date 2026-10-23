@@ -1576,7 +1576,7 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     .then(data => console.log("[ORDER TRACKING] Order synced to backend API:", data))
     .catch(err => console.warn("[ORDER TRACKING] Backend sync:", err));
 
-    // DISPATCH NEW ORDER NOTIFICATION EMAIL TO STORE OWNER
+    // DISPATCH NEW ORDER NOTIFICATION EMAIL TO STORE OWNER & CUSTOMER
     const emailEndpoint = `${getApiBaseUrl()}/api/orders/notify-email`;
 
     fetch(emailEndpoint, {
@@ -1587,7 +1587,13 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     .then(res => res.json())
     .then(data => console.log("[ORDER NOTIFICATION] Branded order email sent:", data))
     .catch(err => {
-      console.warn("[ORDER NOTIFICATION] Dispatch attempt:", err);
+      console.warn("[ORDER NOTIFICATION] Primary dispatch failed, using direct HTTPS fallback:", err);
+      // Direct HTTPS fallback from client if backend is sleeping or unreachable
+      fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData)
+      }).catch(e => console.warn("[ORDER NOTIFICATION] Netlify fallback:", e));
     });
 
     // Close Checkout Modal & Open Receipt

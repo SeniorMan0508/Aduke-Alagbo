@@ -55,7 +55,7 @@ exports.handler = async (event, context) => {
   }
 
   const isCustomerConfirmation = orderData.action === 'customer_payment_confirmed' || orderData.isCustomerConfirmation === true;
-  const ownerEmail = process.env.ADMIN_EMAIL || DEFAULT_OWNER_EMAIL;
+  const ownerEmail = orderData.ownerEmail || process.env.ADMIN_EMAIL || DEFAULT_OWNER_EMAIL;
   const customerEmail = (orderData.customer && orderData.customer.email) ? orderData.customer.email.trim() : "";
   const customerName = (orderData.customer && orderData.customer.name) ? orderData.customer.name : "Valued Customer";
   const finalTotal = Number(orderData.finalTotal || 0);

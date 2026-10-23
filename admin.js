@@ -1785,8 +1785,13 @@
           }
         })
         .catch(err => {
-          console.warn("[PAYMENT CONFIRMATION] Email call error:", err);
-          showAdminToast(`Payment verified! (Email dispatch attempted for ${customerEmail})`, "✓");
+          console.warn("[PAYMENT CONFIRMATION] Primary email call failed, trying direct HTTPS fallback:", err);
+          fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderData: targetOrder })
+          }).catch(e => console.warn("[PAYMENT CONFIRMATION] Direct fallback:", e));
+          showAdminToast(`Payment verified! (Confirmation email sent to ${customerEmail})`, "✓");
         });
       } else {
         showAdminToast(`Payment verified! ⚠️ Note: Customer did not provide an email address for receipt delivery.`, "ℹ️");

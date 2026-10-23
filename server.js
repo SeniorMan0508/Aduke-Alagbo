@@ -273,7 +273,49 @@ async function sendViaNetlifyFunction(toEmail, code) {
   }
 }
 
+/**
+ * Dispatches order notifications via HTTPS Netlify Serverless Relay
+ * (Bypasses Render's firewall block on SMTP ports 25, 465, and 587)
+ */
+async function sendOrderViaNetlifyRelay(orderData, isCustomer = false) {
+  const netlifyUrl = 'https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email';
+  try {
+    const payload = {
+      ...orderData,
+      isCustomerConfirmation: isCustomer,
+      action: isCustomer ? 'customer_payment_confirmed' : 'new_order'
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch(netlifyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+
+    const data = await response.json();
+    if (response.ok && data.success) {
+      console.log(`[NETLIFY RELAY] Delivered ${isCustomer ? 'customer receipt' : 'owner alert'} for order ${orderData.orderRef}`);
+      return { sent: true, method: 'netlify_https_relay', data };
+    } else {
+      console.warn(`[NETLIFY RELAY WARN] Relay returned:`, data);
+      return { sent: false, error: data.error || data.message };
+    }
+  } catch (err) {
+    console.warn(`[NETLIFY RELAY ERROR] Relay dispatch failed:`, err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
 async function sendResetEmail(toEmail, code) {
+  // Try Netlify HTTPS function first (bypasses Render port 465/587 blocking)
+  const netlifyRes = await sendViaNetlifyFunction(toEmail, code);
+  if (netlifyRes.sent) return netlifyRes;
+
   const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
 
@@ -321,10 +363,6 @@ async function sendResetEmail(toEmail, code) {
     return { sent: true, method: dispatchResult.method };
   }
 
-  // Fallback to Netlify function if direct SMTP failed
-  const fallbackRes = await sendViaNetlifyFunction(toEmail, code);
-  if (fallbackRes.sent) return fallbackRes;
-
   // Graceful simulation log in console for development/offline testing
   console.log('\n======================================================');
   console.log(`✉️ [EMAIL SENT TO OWNER (SIMULATED)]`);
@@ -345,6 +383,13 @@ async function sendCustomerOrderReceiptEmail(orderData) {
   const customerEmail = orderData.customer.email.trim();
   if (!customerEmail.includes('@')) {
     return { sent: false, message: 'Invalid customer email address' };
+  }
+
+  // 1. Prioritize Netlify HTTPS Serverless Relay (bypasses Render SMTP port blocking)
+  const relayRes = await sendOrderViaNetlifyRelay(orderData, true);
+  if (relayRes.sent) {
+    console.log(`[CUSTOMER ORDER EMAIL] Receipt delivered to ${customerEmail} via Netlify HTTPS relay`);
+    return relayRes;
   }
 
   const customerName = orderData.customer.name || 'Valued Customer';
@@ -506,6 +551,14 @@ async function sendCustomerOrderReceiptEmail(orderData) {
 // --- STORE OWNER ORDER ALERT SENDER ---
 async function sendOwnerOrderAlert(orderData, ownerEmail) {
   const targetEmail = (ownerEmail || DEFAULT_OWNER_EMAIL).trim();
+
+  // 1. Prioritize Netlify HTTPS Serverless Relay (bypasses Render SMTP port blocking)
+  const relayRes = await sendOrderViaNetlifyRelay({ ...orderData, ownerEmail: targetEmail }, false);
+  if (relayRes.sent) {
+    console.log(`[ORDER OWNER ALERT] Notification delivered to ${targetEmail} via Netlify HTTPS relay`);
+    return relayRes;
+  }
+
   const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
 
@@ -1629,10 +1682,31 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
     return { sent: false, message: 'No customer email provided for this order' };
   }
 
+  const customerEmail = orderData.customer.email.trim();
+
+  // 1. Prioritize Netlify HTTPS relay (bypasses Render SMTP port blocking)
+  try {
+    const netlifyUrl = 'https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const relayRes = await fetch(netlifyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderData }),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const relayData = await relayRes.json();
+    if (relayRes.ok && relayData.success) {
+      console.log(`[CUSTOMER CONFIRM EMAIL] Delivered to ${customerEmail} via Netlify HTTPS relay`);
+      return { sent: true, method: 'netlify_https_relay' };
+    }
+  } catch (err) {
+    console.warn(`[CUSTOMER CONFIRM EMAIL] Netlify relay attempt:`, err.message);
+  }
+
   const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
-
-  const customerEmail = orderData.customer.email.trim();
   const customerName = orderData.customer.name || 'Valued Customer';
   const finalTotal = Number(orderData.finalTotal || 0);
 

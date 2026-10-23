@@ -196,17 +196,7 @@ async function sendViaNetlifyFunction(toEmail, code) {
 }
 
 async function sendResetEmail(toEmail, code) {
-  // If running on Render or other cloud environment where SMTP ports are blocked,
-  // dispatch directly via Netlify Serverless Function (which uses port 587 and is never blocked)
-  const isCloudHost = Boolean(process.env.RENDER || process.env.NODE_ENV === 'production');
-
-  if (isCloudHost) {
-    console.log(`[EMAIL] Running on cloud environment (Render). Dispatching reset email via Netlify serverless function...`);
-    const netlifyRes = await sendViaNetlifyFunction(toEmail, code);
-    if (netlifyRes.sent) return netlifyRes;
-  }
-
-  // Direct SMTP transport (works on local development / laptop)
+  // Direct SMTP transport (uses configured Gmail App Password)
   const transporter = getEmailTransporter();
   const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);

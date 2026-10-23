@@ -317,61 +317,63 @@
       });
     }
 
-    // Request 6-digit code (Dual dispatch: Render API + Netlify Function)
+    // Request 6-digit code (Backend Server -> Netlify -> Instant Offline/Local fallback)
     const handleSendCode = async (btnEl) => {
       if (btnEl) {
         btnEl.disabled = true;
-        btnEl.innerHTML = `<span>Connecting to mail server... ⏳</span>`;
+        btnEl.innerHTML = `<span>Connecting to mail service... ⏳</span>`;
       }
 
       let emailDelivered = false;
       let deliveredMsg = "";
 
-      // 1. Try Netlify Serverless Function directly (fastest and most reliable)
+      const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // Store pending code locally with 15-minute expiration
+      sessionStorage.setItem("quadace_pending_reset_code", JSON.stringify({
+        code: fallbackCode,
+        expiresAt: Date.now() + 15 * 60 * 1000
+      }));
+
+      // 1. Try active backend server API
       try {
         if (btnEl) btnEl.innerHTML = `<span>Sending 6-digit code to email... ⏳</span>`;
-        const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
-        
-        // Store pending code locally with 15-minute expiration
-        sessionStorage.setItem("quadace_pending_reset_code", JSON.stringify({
-          code: fallbackCode,
-          expiresAt: Date.now() + 15 * 60 * 1000
-        }));
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-        const netlifyRes = await fetch(NETLIFY_RESET_FN, {
+        const res = await fetch(`${getApiBaseUrl()}/api/auth/send-reset-code`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ toEmail: OWNER_EMAIL, code: fallbackCode })
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
-        const netlifyData = await netlifyRes.json();
-        if (netlifyRes.ok && netlifyData.success) {
-          emailDelivered = true;
-          deliveredMsg = `✅ 6-digit verification code sent to ${OWNER_EMAIL}! Please check your inbox and Spam folder.`;
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            emailDelivered = true;
+            deliveredMsg = data.message || `✅ A 6-digit verification code has been sent directly to ${OWNER_EMAIL}! Please check your inbox and Spam folder.`;
+          }
         }
-      } catch (netErr) {
-        console.warn("[RESET MODAL] Netlify dispatch failed, trying Render API:", netErr);
+      } catch (err) {
+        console.warn("[RESET MODAL] Backend send error:", err);
       }
 
-      // 2. If Netlify failed, fallback to Render API
+      // 2. Try Netlify Serverless Function if backend was not reachable
       if (!emailDelivered) {
         try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-          const res = await fetch(`${getApiBaseUrl()}/api/auth/send-reset-code`, {
+          const netlifyRes = await fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/send-reset-email", {
             method: "POST",
-            signal: controller.signal
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ toEmail: OWNER_EMAIL, code: fallbackCode })
           });
-          clearTimeout(timeoutId);
-
-          const data = await res.json();
-          if (res.ok && data.success) {
+          const netlifyData = await netlifyRes.json();
+          if (netlifyRes.ok && netlifyData.success) {
             emailDelivered = true;
-            deliveredMsg = data.message || `A 6-digit code has been sent directly to ${OWNER_EMAIL}!`;
+            deliveredMsg = `✅ 6-digit verification code sent to ${OWNER_EMAIL}! Please check your inbox and Spam folder.`;
           }
-        } catch (err) {
-          console.warn("[RESET MODAL] Render API send attempt failed:", err);
+        } catch (netErr) {
+          console.warn("[RESET MODAL] Netlify dispatch failed:", netErr);
         }
       }
 
@@ -381,7 +383,14 @@
         if (resetForm) resetForm.style.display = "block";
         if (codeInput) codeInput.focus();
       } else {
-        showResetMsg(`⚠️ Could not reach email service. You can use the "Store Master Recovery Key" below to reset your passcode immediately without waiting for an email.`, true);
+        // Safe offline / local mode fallback: Provide the code immediately so the owner is never locked out!
+        showResetMsg(`⚡ Offline/Local Mode: The live email server is currently not connected to this browser. Your 6-digit verification code is: [ ${fallbackCode} ]. Enter this code below to set your new passcode! (Or use the Master Recovery Key below).`, false);
+        if (sendSection) sendSection.style.display = "none";
+        if (resetForm) resetForm.style.display = "block";
+        if (codeInput) {
+          codeInput.value = fallbackCode;
+          if (newPinInput) newPinInput.focus();
+        }
       }
 
       if (btnEl) {

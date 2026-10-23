@@ -62,6 +62,9 @@
     }
     // In local development (Live Server port 5500, or file://):
     if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.protocol === "file:") {
+      if (typeof STORE_CONFIG !== "undefined" && STORE_CONFIG.backendUrl) {
+        return STORE_CONFIG.backendUrl.replace(/\/+$/, '');
+      }
       return "http://localhost:3000";
     }
     return "";

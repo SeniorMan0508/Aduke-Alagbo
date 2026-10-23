@@ -1,0 +1,42 @@
+{
+  "agbo-jedi-extra": {
+    "stock": 25,
+    "lowStockThreshold": 8,
+    "lastRestocked": "2026-10-22T10:00:00.000Z"
+  },
+  "man-power-vitality": {
+    "stock": 18,
+    "lowStockThreshold": 8,
+    "lastRestocked": "2026-10-22T10:00:00.000Z"
+  },
+  "queens-hormonal-balance": {
+    "stock": 22,
+    "lowStockThreshold": 8,
+    "lastRestocked": "2026-10-22T10:00:00.000Z"
+  },
+  "agbo-idakole-blend": {
+    "stock": 15,
+    "lowStockThreshold": 6,
+    "lastRestocked": "2026-10-22T10:00:00.000Z"
+  },
+  "raw-ancestral-roots": {
+    "stock": 30,
+    "lowStockThreshold": 10,
+    "lastRestocked": "2026-10-22T10:00:00.000Z"
+  },
+  "immune-booster-elixir": {
+    "stock": 20,
+    "lowStockThreshold": 6,
+    "lastRestocked": "2026-10-22T10:00:00.000Z"
+  },
+  "goron-tula-fruit-pack": {
+    "stock": 14,
+    "lowStockThreshold": 5,
+    "lastRestocked": "2026-10-22T10:00:00.000Z"
+  },
+  "couples-conception-detox-kit": {
+    "stock": 12,
+    "lowStockThreshold": 4,
+    "lastRestocked": "2026-10-22T10:00:00.000Z"
+  }
+}

@@ -1330,25 +1330,6 @@ app.post('/api/orders', (req, res) => {
   res.json({ success: true, order: saved, message: `Order ${orderData.orderRef} placed and recorded successfully!` });
 });
 
-/**
- * PATCH /api/orders/:orderRef/status
- * Update order tracking status (Pending, Verified, Dispatched, Delivered, Cancelled)
- */
-app.patch('/api/orders/:orderRef/status', (req, res) => {
-  const { orderRef } = req.params;
-  const { status, note } = req.body;
-
-  if (!status) {
-    return res.status(400).json({ success: false, message: 'Status is required' });
-  }
-
-  const orders = getStoredOrders();
-  const order = orders.find(o => o.orderRef === orderRef || o.orderRef === `#${orderRef}`);
-
-  if (!order) {
-    return res.status(404).json({ success: false, message: 'Order not found' });
-  }
-
 // Helper to dispatch confirmation email to customer once admin confirms payment
 async function sendCustomerPaymentConfirmationEmail(orderData) {
   if (!orderData || !orderData.customer || !orderData.customer.email) return { sent: false };

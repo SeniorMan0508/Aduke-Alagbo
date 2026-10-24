@@ -833,39 +833,33 @@
     }
 
     tbody.innerHTML = products.map(p => {
-      const isCustom = p.id.startsWith("custom-") || p.isCustom;
-      const sourceBadge = isCustom 
-        ? `<span class="source-badge custom">✨ Admin Added</span>`
-        : `<span class="source-badge default">🌱 Default</span>`;
-
       return `
-        <tr data-id="${escapeHtml(p.id)}">
-          <td>
+        <tr data-id="${escapeHtml(p.id)}" class="product-manage-row">
+          <td class="col-product-photo">
             <img src="${escapeHtml(p.image)}" alt="${escapeHtml(p.name)}" class="product-table-thumb" onerror="this.src='images/agbo-jedi.jpg'">
           </td>
-          <td>
-            <div style="font-weight: 700; color: var(--deep-forest);">${escapeHtml(p.name)}</div>
-            <div style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(p.subtitle || '')}</div>
+          <td class="col-product-info">
+            <div class="product-title" style="font-weight: 700; color: var(--deep-forest); font-size: 0.94rem; line-height: 1.3;">${escapeHtml(p.name)}</div>
+            <div class="product-sub" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">${escapeHtml(p.subtitle || '')}</div>
           </td>
-          <td>
+          <td class="col-product-category">
             <span class="product-category-tag">${escapeHtml(p.categoryLabel || p.category)}</span>
           </td>
-          <td style="font-weight: 800; color: var(--primary-green);">
-            ₦${Number(p.price).toLocaleString("en-NG")}
+          <td class="col-product-price">
+            <span class="product-table-price" style="font-weight: 800; color: var(--primary-green); font-size: 0.95rem;">₦${Number(p.price).toLocaleString("en-NG")}</span>
           </td>
-          <td>
-            ${sourceBadge}
-          </td>
-          <td style="text-align: right; white-space: nowrap;">
-            <button type="button" class="btn-action-edit" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" style="background: rgba(24, 66, 46, 0.08); color: var(--deep-forest); border: 1px solid rgba(24, 66, 46, 0.2); padding: 0.35rem 0.65rem; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 700; cursor: pointer; margin-right: 0.35rem; transition: all 0.2s ease;">
-              ✏️ Edit
-            </button>
-            <button type="button" class="btn-action-del" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}">
-              🗑️ Remove
-            </button>
-            <a href="shop.html" target="_blank" class="btn-action-view" style="margin-left: 0.35rem;">
-              👁️ View in Shop
-            </a>
+          <td class="col-product-actions" style="text-align: right;">
+            <div class="product-actions-grid">
+              <button type="button" class="btn-action-edit" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}">
+                <span>✏️ Edit</span>
+              </button>
+              <button type="button" class="btn-action-del" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}">
+                <span>🗑️ Remove</span>
+              </button>
+              <a href="shop.html" target="_blank" class="btn-action-view">
+                <span>👁️ View</span>
+              </a>
+            </div>
           </td>
         </tr>
       `;

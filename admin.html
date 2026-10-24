@@ -258,6 +258,35 @@
       border: 1px solid #86efac;
     }
 
+    .product-actions-grid {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      justify-content: flex-end;
+    }
+
+    .btn-action-edit {
+      background: rgba(24, 66, 46, 0.08);
+      color: var(--deep-forest);
+      border: 1px solid rgba(24, 66, 46, 0.25);
+      padding: 0.4rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all var(--transition-fast);
+      white-space: nowrap;
+    }
+
+    .btn-action-edit:hover {
+      background: var(--primary-green);
+      color: #ffffff;
+      border-color: var(--primary-green);
+    }
+
     .btn-action-del {
       background: rgba(239, 68, 68, 0.12);
       color: #dc2626;
@@ -267,7 +296,11 @@
       font-size: 0.8rem;
       font-weight: 700;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
       transition: all var(--transition-fast);
+      white-space: nowrap;
     }
 
     .btn-action-del:hover {
@@ -284,8 +317,11 @@
       font-size: 0.8rem;
       font-weight: 700;
       text-decoration: none;
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
       transition: all var(--transition-fast);
+      white-space: nowrap;
     }
 
     .btn-action-view:hover {
@@ -1044,14 +1080,152 @@
       #inventoryTable {
         min-width: 860px !important;
       }
-      #productsTable {
-        min-width: 660px !important;
-      }
       #categoriesTable {
         min-width: 620px !important;
       }
       .admin-table {
         min-width: 660px !important;
+      }
+
+      /* Responsive Products Manage Cards on Mobile (iPhone 13 Pro Max & All Mobile Screens) */
+      .products-table-wrapper {
+        border: none !important;
+        background: transparent !important;
+        overflow: visible !important;
+        margin-top: 0.85rem !important;
+      }
+
+      #productsTable {
+        min-width: 100% !important;
+        width: 100% !important;
+        display: block !important;
+        border-collapse: separate !important;
+      }
+
+      #productsTable thead {
+        display: none !important;
+      }
+
+      #productsTable tbody {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.85rem !important;
+        width: 100% !important;
+      }
+
+      #productsTable .product-manage-row {
+        display: block !important;
+        background: #ffffff !important;
+        border: 1.5px solid rgba(24, 66, 46, 0.12) !important;
+        border-radius: var(--radius-md) !important;
+        padding: 1rem 0.95rem !important;
+        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04) !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      #productsTable .col-product-photo {
+        display: inline-block !important;
+        float: left !important;
+        margin-right: 0.85rem !important;
+        padding: 0 !important;
+        border: none !important;
+      }
+
+      #productsTable .col-product-photo .product-table-thumb {
+        width: 58px !important;
+        height: 58px !important;
+        border-radius: var(--radius-sm) !important;
+        object-fit: cover !important;
+        border: 1.5px solid rgba(24, 66, 46, 0.15) !important;
+      }
+
+      #productsTable .col-product-info {
+        display: block !important;
+        padding: 0 !important;
+        border: none !important;
+        min-height: 58px !important;
+      }
+
+      #productsTable .col-product-info .product-title {
+        font-size: 0.95rem !important;
+        font-weight: 800 !important;
+        color: var(--deep-forest) !important;
+        line-height: 1.3 !important;
+      }
+
+      #productsTable .col-product-info .product-sub {
+        font-size: 0.76rem !important;
+        color: var(--text-muted) !important;
+        line-height: 1.3 !important;
+        margin-top: 2px !important;
+      }
+
+      #productsTable .col-product-category {
+        display: inline-block !important;
+        padding: 0.65rem 0 0 0 !important;
+        border: none !important;
+        clear: both !important;
+      }
+
+      #productsTable .col-product-price {
+        display: inline-block !important;
+        float: right !important;
+        padding: 0.65rem 0 0 0 !important;
+        border: none !important;
+      }
+
+      #productsTable .col-product-actions {
+        display: block !important;
+        clear: both !important;
+        padding: 0.85rem 0 0 0 !important;
+        margin-top: 0.75rem !important;
+        border: none !important;
+        border-top: 1px dashed rgba(24, 66, 46, 0.12) !important;
+        width: 100% !important;
+      }
+
+      #productsTable .product-actions-grid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr auto !important;
+        gap: 0.45rem !important;
+        width: 100% !important;
+      }
+
+      #productsTable .btn-action-edit {
+        background: #18422e !important;
+        color: #ffffff !important;
+        border: 1px solid #18422e !important;
+        padding: 0.6rem 0.75rem !important;
+        font-size: 0.85rem !important;
+        font-weight: 800 !important;
+        border-radius: var(--radius-sm) !important;
+        justify-content: center !important;
+        text-align: center !important;
+      }
+
+      #productsTable .btn-action-del {
+        background: #fef2f2 !important;
+        color: #dc2626 !important;
+        border: 1px solid #fecaca !important;
+        padding: 0.6rem 0.75rem !important;
+        font-size: 0.85rem !important;
+        font-weight: 700 !important;
+        border-radius: var(--radius-sm) !important;
+        justify-content: center !important;
+        text-align: center !important;
+      }
+
+      #productsTable .btn-action-view {
+        background: #f8faf9 !important;
+        color: var(--text-secondary) !important;
+        border: 1px solid rgba(24, 66, 46, 0.2) !important;
+        padding: 0.6rem 0.75rem !important;
+        font-size: 0.82rem !important;
+        font-weight: 600 !important;
+        border-radius: var(--radius-sm) !important;
+        justify-content: center !important;
+        text-align: center !important;
       }
     }
 
@@ -1704,16 +1878,15 @@
             </div>
           </div>
 
-          <div class="table-responsive-wrapper">
+          <div class="table-responsive-wrapper products-table-wrapper">
             <table class="product-manage-table" id="productsTable">
               <thead>
                 <tr>
-                  <th>Photo</th>
+                  <th style="width: 70px;">Photo</th>
                   <th>Remedy Name</th>
-                  <th>Category</th>
-                  <th>Price</th>
-                  <th>Source</th>
-                  <th style="text-align: right;">Action</th>
+                  <th style="width: 160px;">Category</th>
+                  <th style="width: 130px;">Price</th>
+                  <th style="text-align: right; width: 240px;">Action</th>
                 </tr>
               </thead>
               <tbody id="productsTableBody">
@@ -1721,7 +1894,6 @@
               </tbody>
             </table>
           </div>
-          <div class="table-scroll-hint">👈 Swipe horizontally to view catalog actions 👉</div>
         </div>
       </div>
 

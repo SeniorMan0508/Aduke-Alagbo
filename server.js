@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const db = require('./db');
 
 // Load .env configuration file if present
 const ENV_PATH = path.join(__dirname, '.env');
@@ -1124,8 +1125,8 @@ function saveStoredReviews(reviews) {
  * GET /api/reviews
  * Get all customer reviews (default + customer submitted)
  */
-app.get('/api/reviews', (req, res) => {
-  const reviews = getStoredReviews();
+app.get('/api/reviews', async (req, res) => {
+  const reviews = await db.getReviews();
   res.json({ success: true, reviews });
 });
 
@@ -1133,7 +1134,7 @@ app.get('/api/reviews', (req, res) => {
  * POST /api/reviews
  * Submit a customer review (after purchase or from landing page)
  */
-app.post('/api/reviews', (req, res) => {
+app.post('/api/reviews', async (req, res) => {
   const { name, location, rating, remedy, comment, verifiedBuyer } = req.body;
   if (!name || !name.trim() || !comment || !comment.trim()) {
     return res.status(400).json({ success: false, message: 'Name and comment are required.' });
@@ -1145,7 +1146,6 @@ app.post('/api/reviews', (req, res) => {
   const safeRemedy = (remedy && remedy.trim()) ? remedy.trim().slice(0, 100) : 'Authentic Herbal Remedy';
   const safeComment = comment.trim().slice(0, 1000); // Max 1,000 characters per comment
 
-  let reviews = getStoredReviews();
   const newReview = {
     id: `rev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     name: safeName,
@@ -1157,27 +1157,18 @@ app.post('/api/reviews', (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  reviews.unshift(newReview);
-
-  // Maximum cap of 1,000 active reviews to keep file lightweight (<250KB forever)
-  if (reviews.length > 1000) {
-    reviews = reviews.slice(0, 1000);
-  }
-
-  saveStoredReviews(reviews);
+  const saved = await db.saveReview(newReview);
   console.log(`[REVIEW] New customer review posted by ${newReview.name} for ${newReview.remedy}`);
-  res.json({ success: true, review: newReview, message: 'Review successfully saved and published on the website!' });
+  res.json({ success: true, review: saved, message: 'Review successfully saved and published on the website!' });
 });
 
 /**
  * DELETE /api/reviews/:id
  * Remove a review (admin moderation)
  */
-app.delete('/api/reviews/:id', (req, res) => {
+app.delete('/api/reviews/:id', async (req, res) => {
   const { id } = req.params;
-  let reviews = getStoredReviews();
-  reviews = reviews.filter(r => r.id !== id);
-  saveStoredReviews(reviews);
+  await db.deleteReview(id);
   res.json({ success: true, message: 'Review removed successfully.' });
 });
 
@@ -1461,68 +1452,31 @@ function saveStoredInventory(inv) {
 
 function saveNewServerOrder(order) {
   if (!order || !order.orderRef) return null;
-  const orders = getStoredOrders();
-  const existingIdx = orders.findIndex(o => o.orderRef === order.orderRef);
-  let savedOrder;
-  
-  if (existingIdx >= 0) {
-    orders[existingIdx] = { 
-      ...orders[existingIdx], 
-      ...order,
-      adminAlertEmailSent: orders[existingIdx].adminAlertEmailSent || order.adminAlertEmailSent || false
-    };
-    savedOrder = orders[existingIdx];
-  } else {
-    savedOrder = { ...order };
-    orders.unshift(savedOrder);
-  }
-
-  // Cap at 1,000 orders
-  if (orders.length > 1000) {
-    orders.length = 1000;
-  }
-
-  saveStoredOrders(orders);
-
-  // Deduct inventory
-  if (Array.isArray(order.items)) {
-    const inv = getStoredInventory();
-    order.items.forEach(it => {
-      const id = it.id;
-      if (!inv[id]) {
-        inv[id] = { stock: 35, lowStockThreshold: 8, lastRestocked: new Date().toISOString() };
-      }
-      const qty = Number(it.quantity) || 1;
-      inv[id].stock = Math.max(0, (inv[id].stock || 35) - qty);
-      inv[id].updatedAt = new Date().toISOString();
-    });
-    saveStoredInventory(inv);
-  }
-
+  db.saveOrder(order);
   console.log(`[ORDER RECORDED] Order ${order.orderRef} registered for customer ${order.customer ? order.customer.name : 'Guest'}`);
-  return savedOrder;
+  return order;
 }
 
 /**
  * GET /api/orders
  * Returns all recorded customer purchases
  */
-app.get('/api/orders', (req, res) => {
-  const orders = getStoredOrders();
-  res.json({ success: true, orders });
+app.get('/api/orders', async (req, res) => {
+  const orders = await db.getOrders();
+  res.json({ success: true, orders, sqlActive: db.isSqlActive() });
 });
 
 /**
  * POST /api/orders
  * Customer places an order on the website
  */
-app.post('/api/orders', (req, res) => {
+app.post('/api/orders', async (req, res) => {
   const orderData = req.body;
   if (!orderData || !orderData.orderRef) {
     return res.status(400).json({ success: false, message: 'Invalid order data' });
   }
 
-  const saved = saveNewServerOrder(orderData);
+  const saved = await db.saveOrder(orderData);
 
   // STRICT DUPLICATE PREVENTION:
   // Never send an order email alert if:
@@ -1535,7 +1489,7 @@ app.post('/api/orders', (req, res) => {
 
   if (!isSync && !isProcessed && !alreadySent) {
     saved.adminAlertEmailSent = true;
-    saveStoredOrders(getStoredOrders());
+    await db.saveOrder(saved);
     sendOrderNotificationEmail(orderData).catch(err => {
       console.warn(`[ORDER EMAIL BG ERROR]: ${err.message}`);
     });
@@ -1778,37 +1732,24 @@ app.patch('/api/orders/:orderRef/status', (req, res) => {
   }
 
   const clean = (r) => (r || '').toString().trim().replace(/^#/, '').toLowerCase();
-  const targetClean = clean(orderRef);
-  const orders = getStoredOrders();
-  const order = orders.find(o => clean(o.orderRef) === targetClean);
-
+  const order = await db.updateOrderStatus(orderRef, status, note);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  order.status = status;
-  order.updatedAt = new Date().toISOString();
-  if (!Array.isArray(order.statusHistory)) order.statusHistory = [];
-  order.statusHistory.push({
-    status,
-    timestamp: new Date().toISOString(),
-    note: note || `Status changed to ${status}`
-  });
-
   // Automatically send customer confirmation email when payment is verified (only once)
   if (status === 'verified' && !order.paymentConfirmedEmailSent) {
     order.paymentConfirmedEmailSent = true;
+    await db.saveOrder(order);
     sendCustomerPaymentConfirmationEmail(order).catch(e => console.warn('[CONFIRM EMAIL]', e.message));
   }
 
-  saveStoredOrders(orders);
   console.log(`[ORDER STATUS] ${order.orderRef} updated to ${status}`);
-
   res.json({ success: true, order, message: `Order ${order.orderRef} status updated to ${status}` });
 });
 
 // Also support POST for status update
-app.post('/api/orders/:orderRef/status', (req, res) => {
+app.post('/api/orders/:orderRef/status', async (req, res) => {
   const { orderRef } = req.params;
   const { status, note } = req.body;
 
@@ -1816,33 +1757,18 @@ app.post('/api/orders/:orderRef/status', (req, res) => {
     return res.status(400).json({ success: false, message: 'Status is required' });
   }
 
-  const clean = (r) => (r || '').toString().trim().replace(/^#/, '').toLowerCase();
-  const targetClean = clean(orderRef);
-  const orders = getStoredOrders();
-  const order = orders.find(o => clean(o.orderRef) === targetClean);
-
+  const order = await db.updateOrderStatus(orderRef, status, note);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  order.status = status;
-  order.updatedAt = new Date().toISOString();
-  if (!Array.isArray(order.statusHistory)) order.statusHistory = [];
-  order.statusHistory.push({
-    status,
-    timestamp: new Date().toISOString(),
-    note: note || `Status changed to ${status}`
-  });
-
-  // Automatically send customer confirmation email when payment is verified (only once)
   if (status === 'verified' && !order.paymentConfirmedEmailSent) {
     order.paymentConfirmedEmailSent = true;
+    await db.saveOrder(order);
     sendCustomerPaymentConfirmationEmail(order).catch(e => console.warn('[CONFIRM EMAIL]', e.message));
   }
 
-  saveStoredOrders(orders);
   console.log(`[ORDER STATUS] ${order.orderRef} updated to ${status}`);
-
   res.json({ success: true, order, message: `Order ${order.orderRef} status updated to ${status}` });
 });
 
@@ -1850,24 +1776,20 @@ app.post('/api/orders/:orderRef/status', (req, res) => {
  * DELETE /api/orders/:orderRef
  * Remove an order permanently
  */
-app.delete('/api/orders/:orderRef', (req, res) => {
+app.delete('/api/orders/:orderRef', async (req, res) => {
   const { orderRef } = req.params;
-  const clean = (r) => (r || '').toString().trim().replace(/^#/, '').toLowerCase();
-  const targetClean = clean(orderRef);
-  let orders = getStoredOrders();
-  const initialCount = orders.length;
-  orders = orders.filter(o => clean(o.orderRef) !== targetClean);
-  saveStoredOrders(orders);
-  console.log(`[ORDER DELETED] ${orderRef} removed (${initialCount} -> ${orders.length} remaining)`);
-  res.json({ success: true, message: `Order ${orderRef} removed`, remaining: orders.length });
+  await db.deleteOrder(orderRef);
+  const remainingOrders = await db.getOrders();
+  console.log(`[ORDER DELETED] ${orderRef} removed (${remainingOrders.length} remaining)`);
+  res.json({ success: true, message: `Order ${orderRef} removed`, remaining: remainingOrders.length });
 });
 
 /**
  * GET /api/inventory
  * Retrieve current product stock levels
  */
-app.get('/api/inventory', (req, res) => {
-  const inventory = getStoredInventory();
+app.get('/api/inventory', async (req, res) => {
+  const inventory = await db.getInventory();
   res.json({ success: true, inventory });
 });
 
@@ -1875,30 +1797,43 @@ app.get('/api/inventory', (req, res) => {
  * POST /api/inventory
  * Update stock level and threshold for a product
  */
-app.post('/api/inventory', (req, res) => {
+app.post('/api/inventory', async (req, res) => {
   const { productId, stock, lowStockThreshold } = req.body;
   if (!productId) {
     return res.status(400).json({ success: false, message: 'productId is required' });
   }
 
-  const inv = getStoredInventory();
+  const inv = await db.getInventory();
   inv[productId] = {
     stock: Math.max(0, parseInt(stock, 10) || 0),
     lowStockThreshold: Math.max(1, parseInt(lowStockThreshold, 10) || 8),
     lastRestocked: new Date().toISOString()
   };
 
-  saveStoredInventory(inv);
-  res.json({ success: true, inventory: inv[productId], message: `Stock updated for product ${productId}` });
+  await db.saveInventory(inv);
+  res.json({ success: true, item: inv[productId], message: `Stock for ${productId} updated to ${inv[productId].stock}` });
+});
+
+/**
+ * GET /api/db-status
+ * Live status of database connection
+ */
+app.get('/api/db-status', (req, res) => {
+  res.json({
+    success: true,
+    sqlActive: db.isSqlActive(),
+    databaseType: db.isSqlActive() ? 'PostgreSQL (Cloud SQL Database)' : 'Local File Storage (Fallback Mode)',
+    hasDatabaseUrl: Boolean(process.env.DATABASE_URL)
+  });
 });
 
 /**
  * GET /api/orders/stats
  * Overview stats of purchases, revenue, and product sales
  */
-app.get('/api/orders/stats', (req, res) => {
-  const orders = getStoredOrders();
-  const inv = getStoredInventory();
+app.get('/api/orders/stats', async (req, res) => {
+  const orders = await db.getOrders();
+  const inv = await db.getInventory();
 
   let totalRevenue = 0;
   let totalUnitsSold = 0;

@@ -2064,6 +2064,42 @@
     }
   }
 
+  // Check Database & SQL Status
+  async function checkDatabaseStatus() {
+    const badge = document.getElementById("databaseStatusBadge");
+    const text = document.getElementById("databaseStatusText");
+    if (!badge || !text) return;
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/db-status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.sqlActive) {
+          text.textContent = "Database: PostgreSQL Active ✓";
+          badge.style.background = "rgba(16, 185, 129, 0.25)";
+          badge.style.color = "#86efac";
+          badge.style.borderColor = "rgba(134, 239, 172, 0.5)";
+          badge.title = "PostgreSQL Cloud SQL Database is connected and backing all orders.";
+        } else {
+          text.textContent = "Database: Local / SQL Ready ⚡";
+          badge.style.background = "rgba(234, 179, 8, 0.15)";
+          badge.style.color = "#fef08a";
+          badge.style.borderColor = "rgba(253, 224, 71, 0.35)";
+          badge.title = "Running on resilient local storage. Click to view Cloud SQL setup.";
+        }
+      }
+    } catch (e) {
+      if (text) text.textContent = "Database: Local Storage";
+    }
+
+    badge.onclick = () => {
+      showAdminToast(
+        "🗄️ Database Info: Aduke Alagbo supports PostgreSQL. Add DATABASE_URL in Render to switch from local storage to permanent Cloud SQL.",
+        "ℹ️"
+      );
+    };
+  }
+
   // Live order polling every 8 seconds
   function startOrderLiveSync() {
     if (livePollingTimer) clearInterval(livePollingTimer);
@@ -2286,6 +2322,7 @@
     syncServerCategories();
     syncOrdersFromServer();
     startOrderLiveSync();
+    checkDatabaseStatus();
     getAdminReviews().then(reviews => updateReviewsStats(reviews.length));
   }
 

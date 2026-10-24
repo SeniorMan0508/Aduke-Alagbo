@@ -1821,13 +1821,15 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     // LIVE STATUS WATCHER:
     // Real-time listener that watches for Aduke Alagbo verifying the payment alert in her admin dashboard!
     if (!isAlreadyVerified && (order.status === "pending" || !order.status)) {
+      const targetClean = (order.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
+
       const checkAndUpdateLive = async () => {
         let verifiedStatus = null;
 
         // 1. Check local storage
         if (typeof getStoreOrders === "function") {
           const localOrders = getStoreOrders();
-          const found = localOrders.find(o => o.orderRef === order.orderRef || o.orderRef === order.orderRef.replace(/^#/, ''));
+          const found = localOrders.find(o => (o.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase() === targetClean);
           if (found && (found.status === "verified" || found.status === "dispatched" || found.status === "delivered")) {
             verifiedStatus = found.status;
           }
@@ -1836,12 +1838,11 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
         // 2. Check backend server API
         if (!verifiedStatus) {
           try {
-            const cleanRef = order.orderRef.replace(/^#/, '');
             const res = await fetch(`${getApiBaseUrl()}/api/orders`);
             if (res.ok) {
               const data = await res.json();
               const serverOrders = data.orders || [];
-              const foundServer = serverOrders.find(o => o.orderRef === order.orderRef || o.orderRef === `#${cleanRef}` || o.orderRef === cleanRef);
+              const foundServer = serverOrders.find(o => (o.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase() === targetClean);
               if (foundServer && (foundServer.status === "verified" || foundServer.status === "dispatched" || foundServer.status === "delivered")) {
                 verifiedStatus = foundServer.status;
               }
@@ -1862,7 +1863,8 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
 
       // Listen for window event dispatched when admin confirms payment in another tab
       const onStatusUpdated = (e) => {
-        if (e.detail && (e.detail.orderRef === order.orderRef || e.detail.orderRef === order.orderRef.replace(/^#/, ''))) {
+        const updatedRef = (e.detail && e.detail.orderRef ? e.detail.orderRef : '').toString().trim().replace(/^#/, '').toLowerCase();
+        if (updatedRef === targetClean) {
           if (e.detail.newStatus === "verified" || e.detail.newStatus === "dispatched" || e.detail.newStatus === "delivered") {
             order.status = e.detail.newStatus;
             renderReceiptStatus(e.detail.newStatus);

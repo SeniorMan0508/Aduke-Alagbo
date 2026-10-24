@@ -1307,37 +1307,98 @@
     const receiptFileSize = document.getElementById("receiptFileSize");
     const removeReceiptBtn = document.getElementById("removeReceiptBtn");
 
+    function applyReceiptData(dataUrl, name, sizeStr, isImage) {
+      state.attachedReceiptData = dataUrl;
+      state.attachedReceiptName = name;
+      state.attachedReceiptSize = sizeStr;
+
+      if (receiptFileName) receiptFileName.textContent = name;
+      if (receiptFileSize) receiptFileSize.textContent = `${sizeStr} • Ready to verify`;
+      if (receiptPreviewImg) {
+        if (isImage) {
+          receiptPreviewImg.src = dataUrl;
+          receiptPreviewImg.style.display = "block";
+        } else {
+          receiptPreviewImg.src = "";
+          receiptPreviewImg.style.display = "none";
+        }
+      }
+      if (dropzoneEmptyView) dropzoneEmptyView.style.display = "none";
+      if (dropzonePreviewView) dropzonePreviewView.style.display = "flex";
+      showToast("Receipt screenshot attached & optimized! ✓", "🧾");
+    }
+
     function handleReceiptFile(file) {
       if (!file) return;
       if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
         showToast("Please select an image file (PNG, JPG) or PDF receipt.", "⚠️");
         return;
       }
-      if (file.size > 10 * 1024 * 1024) {
-        showToast("Receipt file is too large (max 10MB).", "⚠️");
+      if (file.size > 15 * 1024 * 1024) {
+        showToast("Receipt file is too large (max 15MB).", "⚠️");
         return;
       }
 
+      if (file.type === "application/pdf") {
+        if (file.size > 2 * 1024 * 1024) {
+          showToast("PDF receipt must be under 2MB.", "⚠️");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          applyReceiptData(e.target.result, file.name, `${(file.size / 1024).toFixed(1)} KB`, false);
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // High-efficiency Image Compression for mobile camera photos
       const reader = new FileReader();
       reader.onload = (e) => {
-        state.attachedReceiptData = e.target.result;
-        state.attachedReceiptName = file.name;
-        state.attachedReceiptSize = `${(file.size / 1024).toFixed(1)} KB`;
+        const rawDataUrl = e.target.result;
+        const img = new Image();
+        img.onload = () => {
+          try {
+            // Target max dimension 900px (keeps text sharp & crystal clear while keeping payload ~60KB)
+            const maxDim = 900;
+            let width = img.width || 800;
+            let height = img.height || 800;
 
-        if (receiptFileName) receiptFileName.textContent = file.name;
-        if (receiptFileSize) receiptFileSize.textContent = `${state.attachedReceiptSize} • Ready to verify`;
-        if (receiptPreviewImg) {
-          if (file.type.startsWith("image/")) {
-            receiptPreviewImg.src = e.target.result;
-            receiptPreviewImg.style.display = "block";
-          } else {
-            receiptPreviewImg.src = "";
-            receiptPreviewImg.style.display = "none";
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.72);
+            const compressedKb = Math.round((compressedDataUrl.length * 0.75) / 1024);
+            const fileNameClean = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+
+            applyReceiptData(compressedDataUrl, fileNameClean, `${compressedKb} KB (Optimized)`, true);
+          } catch (canvasErr) {
+            console.warn("Canvas compression fallback:", canvasErr);
+            applyReceiptData(rawDataUrl, file.name, `${(file.size / 1024).toFixed(1)} KB`, true);
           }
-        }
-        if (dropzoneEmptyView) dropzoneEmptyView.style.display = "none";
-        if (dropzonePreviewView) dropzonePreviewView.style.display = "flex";
-        showToast("Receipt screenshot attached! ✓", "🧾");
+        };
+        img.onerror = () => {
+          applyReceiptData(rawDataUrl, file.name, `${(file.size / 1024).toFixed(1)} KB`, true);
+        };
+        img.src = rawDataUrl;
+      };
+      reader.onerror = () => {
+        showToast("Could not read receipt file. Please try another image.", "⚠️");
       };
       reader.readAsDataURL(file);
     }
@@ -1564,20 +1625,47 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
       saveStoreOrder(orderData);
     }
 
-    // POST TO BACKEND ORDER API
-    const orderApiUrl = `${getApiBaseUrl()}/api/orders`;
+    // ASYNC ORDER SYNC TO BACKEND WITH MULTI-ENDPOINT & RETRY
+    async function syncOrderToBackend(order) {
+      const endpoints = [
+        `${getApiBaseUrl()}/api/orders`,
+        "https://quad-ace-herbs.onrender.com/api/orders"
+      ].filter((u, i, arr) => u && arr.indexOf(u) === i);
 
-    fetch(orderApiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(orderData)
-    })
-    .then(res => res.json())
-    .then(data => console.log("[ORDER TRACKING] Order synced to backend API:", data))
-    .catch(err => console.warn("[ORDER TRACKING] Backend sync:", err));
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        for (const url of endpoints) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 12000);
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(order),
+              signal: controller.signal
+            });
+            clearTimeout(timeout);
+            if (res.ok) {
+              const data = await res.json();
+              console.log(`[ORDER SYNC] Order ${order.orderRef} synced via ${url}:`, data);
+              return true;
+            }
+          } catch (err) {
+            console.warn(`[ORDER SYNC] Attempt ${attempt} on ${url}:`, err.message);
+          }
+        }
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, 2000 * attempt));
+        }
+      }
+      return false;
+    }
 
-    // DISPATCH NEW ORDER NOTIFICATION EMAIL TO STORE OWNER & CUSTOMER
+    // Launch backend sync (retries in background if server is cold-starting)
+    syncOrderToBackend(orderData);
+
+    // DISPATCH NEW ORDER NOTIFICATION EMAIL TO STORE OWNER
     const emailEndpoint = `${getApiBaseUrl()}/api/orders/notify-email`;
+    const netlifyDirectUrl = "https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email";
 
     fetch(emailEndpoint, {
       method: "POST",
@@ -1585,11 +1673,20 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
       body: JSON.stringify(orderData)
     })
     .then(res => res.json())
-    .then(data => console.log("[ORDER NOTIFICATION] Branded order email sent:", data))
+    .then(data => {
+      console.log("[ORDER NOTIFICATION] Branded order email sent:", data);
+      if (!data.success) {
+        fetch(netlifyDirectUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(orderData)
+        }).catch(e => console.warn("[ORDER NOTIFICATION] Netlify fallback:", e));
+      }
+    })
     .catch(err => {
       console.warn("[ORDER NOTIFICATION] Primary dispatch failed, using direct HTTPS fallback:", err);
       // Direct HTTPS fallback from client if backend is sleeping or unreachable
-      fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email", {
+      fetch(netlifyDirectUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderData)

@@ -575,14 +575,26 @@ async function sendOrderNotificationEmail(orderData) {
     return { sent: false, message: 'Invalid order data' };
   }
 
+  // Strictly skip email dispatch if this is a sync, replay, or background backup push
+  if (orderData.isSync || orderData.skipEmail) {
+    console.log(`[ORDER NOTIFY] Skipping sync/backup order ${orderData.orderRef} - no email required.`);
+    return { sent: false, skippedSync: true, orderRef: orderData.orderRef };
+  }
+
+  // Strictly skip email dispatch if the order is already processed/verified/dispatched
+  if (orderData.status && orderData.status !== 'pending') {
+    console.log(`[ORDER NOTIFY] Order ${orderData.orderRef} status is ${orderData.status}. Skipping new order alert.`);
+    return { sent: false, skippedStatus: true, orderRef: orderData.orderRef };
+  }
+
   const cleanRef = (orderData.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
   const now = Date.now();
 
-  // Deduplication guard: ignore duplicate calls for the same order within 2 minutes
+  // Deduplication guard: ignore duplicate calls for the same order within 24 hours
   if (recentlyNotifiedOrders.has(cleanRef)) {
     const lastSent = recentlyNotifiedOrders.get(cleanRef);
-    if (now - lastSent < 120000) {
-      console.log(`[ORDER NOTIFY] Order ${orderData.orderRef} owner alert already notified within last 2 minutes. Skipping duplicate.`);
+    if (now - lastSent < 86400000) {
+      console.log(`[ORDER NOTIFY] Order ${orderData.orderRef} owner alert already notified within last 24h. Skipping duplicate.`);
       return { sent: true, skippedDuplicate: true, orderRef: orderData.orderRef };
     }
   }
@@ -1181,10 +1193,25 @@ app.post('/api/orders/notify-email', async (req, res) => {
   }
 
   // Also ensure order is persisted in server orders database
+  let saved = null;
   try {
-    saveNewServerOrder(orderData);
+    saved = saveNewServerOrder(orderData);
   } catch (e) {
     console.warn('[SERVER] Could not auto-persist order on email notify:', e.message);
+  }
+
+  const isSync = Boolean(req.body.isSync || req.body.skipEmail);
+  const isProcessed = saved && saved.status && saved.status !== 'pending';
+  const alreadySent = Boolean(saved && saved.adminAlertEmailSent);
+
+  if (isSync || isProcessed || alreadySent) {
+    console.log(`[NOTIFY-EMAIL API] Skipping duplicate or sync email for ${orderData.orderRef}`);
+    return res.json({ success: true, skippedDuplicate: true, message: 'Duplicate or sync order email skipped.' });
+  }
+
+  if (saved) {
+    saved.adminAlertEmailSent = true;
+    saveStoredOrders(getStoredOrders());
   }
 
   try {
@@ -1436,11 +1463,18 @@ function saveNewServerOrder(order) {
   if (!order || !order.orderRef) return null;
   const orders = getStoredOrders();
   const existingIdx = orders.findIndex(o => o.orderRef === order.orderRef);
+  let savedOrder;
   
   if (existingIdx >= 0) {
-    orders[existingIdx] = { ...orders[existingIdx], ...order };
+    orders[existingIdx] = { 
+      ...orders[existingIdx], 
+      ...order,
+      adminAlertEmailSent: orders[existingIdx].adminAlertEmailSent || order.adminAlertEmailSent || false
+    };
+    savedOrder = orders[existingIdx];
   } else {
-    orders.unshift(order);
+    savedOrder = { ...order };
+    orders.unshift(savedOrder);
   }
 
   // Cap at 1,000 orders
@@ -1466,7 +1500,7 @@ function saveNewServerOrder(order) {
   }
 
   console.log(`[ORDER RECORDED] Order ${order.orderRef} registered for customer ${order.customer ? order.customer.name : 'Guest'}`);
-  return order;
+  return savedOrder;
 }
 
 /**
@@ -1490,10 +1524,24 @@ app.post('/api/orders', (req, res) => {
 
   const saved = saveNewServerOrder(orderData);
 
-  // Automatically trigger email notifications in background (with deduplication guard)
-  sendOrderNotificationEmail(orderData).catch(err => {
-    console.warn(`[ORDER EMAIL BG ERROR]: ${err.message}`);
-  });
+  // STRICT DUPLICATE PREVENTION:
+  // Never send an order email alert if:
+  // 1. It is a sync request from admin dashboard or background job (isSync || skipEmail)
+  // 2. The order has already been verified, dispatched, or delivered
+  // 3. An email alert for this order was already dispatched (saved.adminAlertEmailSent)
+  const isSync = Boolean(req.body.isSync || req.body.skipEmail);
+  const isProcessed = saved && saved.status && saved.status !== 'pending';
+  const alreadySent = Boolean(saved && saved.adminAlertEmailSent);
+
+  if (!isSync && !isProcessed && !alreadySent) {
+    saved.adminAlertEmailSent = true;
+    saveStoredOrders(getStoredOrders());
+    sendOrderNotificationEmail(orderData).catch(err => {
+      console.warn(`[ORDER EMAIL BG ERROR]: ${err.message}`);
+    });
+  } else {
+    console.log(`[ORDER POST] Skipping email for ${orderData.orderRef} (isSync=${isSync}, isProcessed=${isProcessed}, alreadySent=${alreadySent})`);
+  }
 
   res.json({ success: true, order: saved, message: `Order ${orderData.orderRef} placed and recorded successfully!` });
 });

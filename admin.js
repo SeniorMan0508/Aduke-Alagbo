@@ -1957,7 +1957,7 @@
       await fetch(`${getApiBaseUrl()}/api/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newOrder)
+        body: JSON.stringify({ ...newOrder, isSync: true, skipEmail: true })
       });
     } catch (e) {}
 
@@ -2005,11 +2005,11 @@
             const lr = norm(lo.orderRef);
             if (!deletedRefs.includes(lr) && !ordersMap.has(lr)) {
               ordersMap.set(lr, lo);
-              // Push local order to server so backend has it too!
+              // Push local order to server so backend has it too, but NEVER send an email alert!
               fetch(`${getApiBaseUrl()}/api/orders`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(lo)
+                body: JSON.stringify({ ...lo, isSync: true, skipEmail: true })
               }).catch(() => {});
             }
           });
@@ -2030,7 +2030,24 @@
             lastKnownOrderRefs.add(ord.orderRef);
           });
 
-          localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(merged));
+          // Safe localStorage persistence (protects against QuotaExceededError so UI never breaks)
+          try {
+            localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(merged));
+          } catch (storageErr) {
+            console.warn("Storage quota limit reached in admin sync; trimming heavy dataUrls for quota safety:", storageErr);
+            const safeMerged = merged.map(o => {
+              if (o.receiptProof && o.receiptProof.dataUrl && o.receiptProof.dataUrl.length > 50000) {
+                return {
+                  ...o,
+                  receiptProof: { ...o.receiptProof, dataUrl: "" }
+                };
+              }
+              return o;
+            });
+            try {
+              localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(safeMerged));
+            } catch (e2) {}
+          }
 
           if (hasNewOrder && latestNew) {
             playOrderChime();

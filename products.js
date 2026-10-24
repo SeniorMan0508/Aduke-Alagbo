@@ -816,7 +816,11 @@ function saveStoreOrder(order) {
   // If already exists, update it; otherwise add to the very top (newest first)
   const existingIdx = orders.findIndex(o => normalizeOrderRef(o.orderRef) === targetRef);
   if (existingIdx >= 0) {
-    orders[existingIdx] = { ...orders[existingIdx], ...order };
+    orders[existingIdx] = { 
+      ...orders[existingIdx], 
+      ...order,
+      adminAlertEmailSent: orders[existingIdx].adminAlertEmailSent || order.adminAlertEmailSent || false
+    };
   } else {
     orders.unshift(order);
   }

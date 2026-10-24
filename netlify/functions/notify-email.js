@@ -45,6 +45,28 @@ exports.handler = async (event, context) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Missing order reference" }) };
   }
 
+  // If this is a synchronization push from admin dashboard or background job, do NOT send email
+  if (orderData.isSync === true || orderData.skipEmail === true) {
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ success: true, skipped: true, message: "Sync order acknowledged without email dispatch." })
+    };
+  }
+
+  const isCustomerConfirmation = orderData.action === 'customer_payment_confirmed' || orderData.isCustomerConfirmation === true;
+
+  // Cloud-to-cloud redundant sync to Render backend so order is guaranteed to be saved in admin database
+  if (!isCustomerConfirmation) {
+    try {
+      fetch('https://quad-ace-herbs.onrender.com/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...orderData, isSync: true, skipEmail: true })
+      }).catch(err => console.warn('[NETLIFY CLOUD SYNC WARN]:', err.message));
+    } catch (e) {}
+  }
+
   const transporter = getEmailTransporter();
   if (!transporter) {
     return {
@@ -54,7 +76,6 @@ exports.handler = async (event, context) => {
     };
   }
 
-  const isCustomerConfirmation = orderData.action === 'customer_payment_confirmed' || orderData.isCustomerConfirmation === true;
   const ownerEmail = orderData.ownerEmail || process.env.ADMIN_EMAIL || DEFAULT_OWNER_EMAIL;
   const customerEmail = (orderData.customer && orderData.customer.email) ? orderData.customer.email.trim() : "";
   const customerName = (orderData.customer && orderData.customer.name) ? orderData.customer.name : "Valued Customer";

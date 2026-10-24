@@ -622,7 +622,7 @@
       <div class="product-card" data-id="${product.id}">
         <div class="product-thumb-container" onclick="window.app && window.app.openQuickView ? window.app.openQuickView('${product.id}') : null" style="cursor: pointer;">
           ${product.badge ? `<span class="product-badge ${product.badgeType || 'standard'}">${product.badge}</span>` : ''}
-          <img src="${product.image}" alt="${product.name}" loading="lazy" onerror="this.src='images/agbo-jedi.jpg'">
+          <img src="${product.image}" alt="${product.name}" loading="lazy" decoding="async" onerror="this.src='images/agbo-jedi.jpg'">
           <button class="quick-view-overlay-btn" onclick="event.stopPropagation(); window.app && window.app.openQuickView ? window.app.openQuickView('${product.id}') : null">
             🔍 Quick Details
           </button>

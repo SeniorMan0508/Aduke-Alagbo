@@ -1906,8 +1906,17 @@ app.get('/api/orders/stats', (req, res) => {
   });
 });
 
-// --- STATIC WEBSITE HOSTING ---
-app.use(express.static(__dirname));
+// --- STATIC WEBSITE HOSTING WITH BROWSER CACHING ---
+app.use(express.static(__dirname, {
+  maxAge: '7d', // 7 days browser cache for images, CSS, and JS
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (/\.(jpg|jpeg|png|webp|gif|svg|ico)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    }
+  }
+}));
 
 // Route shortcuts
 app.get('/shop', (req, res) => {

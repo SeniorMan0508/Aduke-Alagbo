@@ -804,6 +804,9 @@
             ${sourceBadge}
           </td>
           <td style="text-align: right; white-space: nowrap;">
+            <button type="button" class="btn-action-edit" data-id="${p.id}" data-name="${p.name}" style="background: rgba(24, 66, 46, 0.08); color: var(--deep-forest); border: 1px solid rgba(24, 66, 46, 0.2); padding: 0.35rem 0.65rem; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 700; cursor: pointer; margin-right: 0.35rem; transition: all 0.2s ease;">
+              ✏️ Edit
+            </button>
             <button type="button" class="btn-action-del" data-id="${p.id}" data-name="${p.name}">
               🗑️ Remove
             </button>
@@ -814,6 +817,14 @@
         </tr>
       `;
     }).join("");
+
+    // Wire edit buttons
+    tbody.querySelectorAll(".btn-action-edit").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        openEditProductModal(id);
+      });
+    });
 
     // Wire delete buttons
     tbody.querySelectorAll(".btn-action-del").forEach(btn => {
@@ -835,6 +846,267 @@
       showAdminToast(`'${productName}' removed from shop.`, "🗑️");
       updateStats();
       renderManageTable();
+    }
+  }
+
+  // --- EDIT PRODUCT MODAL CONTROLLER ---
+  let activeEditImageSrc = "";
+
+  function populateEditCategorySelect(selectedId) {
+    const select = document.getElementById("editProdCategory");
+    if (!select) return;
+
+    const categories = typeof getStoreCategories === "function" ? getStoreCategories(false) : [];
+    select.innerHTML = categories.map(cat => `
+      <option value="${cat.id}">
+        ${cat.icon ? cat.icon + ' ' : ''}${cat.label}${cat.desc ? ' — ' + cat.desc : ''}
+      </option>
+    `).join("");
+
+    if (selectedId && categories.some(c => c.id === selectedId)) {
+      select.value = selectedId;
+    } else if (categories[0]) {
+      select.value = categories[0].id;
+    }
+  }
+
+  function openEditProductModal(productId) {
+    const modal = document.getElementById("editProductModal");
+    if (!modal) return;
+
+    const products = typeof getStoreProducts === "function" ? getStoreProducts() : PRODUCTS_DATA;
+    const prod = products.find(p => p.id === productId);
+    if (!prod) {
+      showAdminToast("Product not found in catalog.", "⚠️");
+      return;
+    }
+
+    // Populate category dropdown with current category selected
+    populateEditCategorySelect(prod.category);
+
+    // Populate input fields
+    const idInput = document.getElementById("editProdId");
+    const nameInput = document.getElementById("editProdName");
+    const subInput = document.getElementById("editProdSubtitle");
+    const priceInput = document.getElementById("editProdPrice");
+    const origPriceInput = document.getElementById("editProdOriginalPrice");
+    const badgeInput = document.getElementById("editProdBadge");
+    const badgeTypeSelect = document.getElementById("editProdBadgeType");
+    const imgUrlInput = document.getElementById("editProdImageUrl");
+    const imgPreview = document.getElementById("editActiveImagePreview");
+    const shortDescInput = document.getElementById("editProdShortDesc");
+    const fullDescInput = document.getElementById("editProdFullDesc");
+    const benefitsInput = document.getElementById("editProdBenefits");
+    const ingredientsInput = document.getElementById("editProdIngredients");
+    const usageInput = document.getElementById("editProdUsage");
+    const cautionInput = document.getElementById("editProdCaution");
+    const headerSub = document.getElementById("editModalSub");
+
+    if (idInput) idInput.value = prod.id;
+    if (nameInput) nameInput.value = prod.name || "";
+    if (subInput) subInput.value = prod.subtitle || "";
+    if (priceInput) priceInput.value = prod.price || "";
+    if (origPriceInput) origPriceInput.value = prod.originalPrice || "";
+    if (badgeInput) badgeInput.value = prod.badge || "";
+    if (badgeTypeSelect) badgeTypeSelect.value = prod.badgeType || "gold";
+    if (shortDescInput) shortDescInput.value = prod.shortDesc || "";
+    if (fullDescInput) fullDescInput.value = prod.fullDesc || "";
+    if (benefitsInput) {
+      benefitsInput.value = Array.isArray(prod.benefits) ? prod.benefits.join("\n") : (prod.benefits || "");
+    }
+    if (ingredientsInput) {
+      ingredientsInput.value = Array.isArray(prod.ingredients) ? prod.ingredients.join("\n") : (prod.ingredients || "");
+    }
+    if (usageInput) usageInput.value = prod.usage || "";
+    if (cautionInput) cautionInput.value = prod.caution || "";
+
+    // Image handling
+    activeEditImageSrc = prod.image || "images/agbo-jedi.jpg";
+    if (imgUrlInput) imgUrlInput.value = prod.image || "";
+    if (imgPreview) imgPreview.src = activeEditImageSrc;
+
+    const fileInput = document.getElementById("editProdImageFile");
+    if (fileInput) fileInput.value = "";
+
+    if (headerSub) {
+      headerSub.textContent = `Editing: ${prod.name} • Price, description & botanical formulation`;
+    }
+
+    modal.style.display = "flex";
+  }
+
+  function initEditProductModule() {
+    const modal = document.getElementById("editProductModal");
+    const form = document.getElementById("editProductForm");
+    const closeBtn = document.getElementById("closeEditProductModalBtn");
+    const cancelBtn = document.getElementById("cancelEditProductBtn");
+    const imgUrlInput = document.getElementById("editProdImageUrl");
+    const imgFileInput = document.getElementById("editProdImageFile");
+    const imgPreview = document.getElementById("editActiveImagePreview");
+    const saveBtn = document.getElementById("saveEditProductBtn");
+
+    if (!modal) return;
+
+    const closeModal = () => {
+      modal.style.display = "none";
+    };
+
+    if (closeBtn) closeBtn.addEventListener("click", closeModal);
+    if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+
+    // Close on overlay backdrop click
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    // Image URL live preview
+    if (imgUrlInput) {
+      imgUrlInput.addEventListener("input", (e) => {
+        const val = e.target.value.trim();
+        if (val) {
+          activeEditImageSrc = val;
+          if (imgPreview) imgPreview.src = val;
+        }
+      });
+    }
+
+    // Image File Upload compression & preview
+    if (imgFileInput) {
+      imgFileInput.addEventListener("change", (e) => {
+        if (e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          const reader = new FileReader();
+          reader.onload = (loadEvent) => {
+            const tempImg = new Image();
+            tempImg.onload = () => {
+              const canvas = document.createElement("canvas");
+              const maxDim = 800;
+              let w = tempImg.width;
+              let h = tempImg.height;
+              if (w > maxDim || h > maxDim) {
+                if (w > h) {
+                  h = Math.round((h * maxDim) / w);
+                  w = maxDim;
+                } else {
+                  w = Math.round((w * maxDim) / h);
+                  h = maxDim;
+                }
+              }
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(tempImg, 0, 0, w, h);
+              activeEditImageSrc = canvas.toDataURL("image/jpeg", 0.8);
+              if (imgPreview) imgPreview.src = activeEditImageSrc;
+              if (imgUrlInput) imgUrlInput.value = "";
+              showAdminToast("New remedy photo loaded ✓", "📸");
+            };
+            tempImg.src = loadEvent.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    }
+
+    // Form submit
+    if (form) {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const id = document.getElementById("editProdId").value;
+        const name = document.getElementById("editProdName").value.trim();
+        const category = document.getElementById("editProdCategory").value;
+        const subtitle = document.getElementById("editProdSubtitle").value.trim();
+        const price = Number(document.getElementById("editProdPrice").value);
+        const originalPriceVal = document.getElementById("editProdOriginalPrice").value;
+        const originalPrice = originalPriceVal ? Number(originalPriceVal) : null;
+        const badge = document.getElementById("editProdBadge").value.trim();
+        const badgeType = document.getElementById("editProdBadgeType").value;
+        const shortDesc = document.getElementById("editProdShortDesc").value.trim();
+        const fullDesc = document.getElementById("editProdFullDesc").value.trim() || shortDesc;
+        const usage = document.getElementById("editProdUsage").value.trim() || "Take as traditionally directed on bottle.";
+        const caution = document.getElementById("editProdCaution").value.trim() || "";
+
+        if (!id || !name || !price || !shortDesc) {
+          showAdminToast("Please provide Remedy Name, Price, and Short Summary.", "⚠️");
+          return;
+        }
+
+        const benefitsText = document.getElementById("editProdBenefits").value.trim();
+        const benefits = benefitsText
+          ? benefitsText.split("\n").map(b => b.trim()).filter(Boolean)
+          : ["100% pure wildcrafted botanical formula", "Promotes natural bodily restoration"];
+
+        const ingredientsText = document.getElementById("editProdIngredients").value.trim();
+        const ingredients = ingredientsText
+          ? ingredientsText.split("\n").map(i => i.trim()).filter(Boolean)
+          : ["Wild-harvested ancestral African roots and leaves"];
+
+        const categoryLabel = (typeof getCategoryLabel === "function")
+          ? getCategoryLabel(category)
+          : (CATEGORY_LABELS[category] || "Agbo & Tonics");
+
+        // Find existing product to preserve fields (rating, reviewsCount, healthGoals, etc.)
+        const currentProducts = typeof getStoreProducts === "function" ? getStoreProducts() : PRODUCTS_DATA;
+        const existing = currentProducts.find(p => p.id === id) || {};
+
+        const updatedProduct = {
+          ...existing,
+          id: id,
+          name: name,
+          subtitle: subtitle || `${categoryLabel} Herbal Remedy`,
+          category: category,
+          categoryLabel: categoryLabel,
+          price: price,
+          originalPrice: originalPrice,
+          badge: badge,
+          badgeType: badgeType,
+          image: activeEditImageSrc || existing.image || "images/agbo-jedi.jpg",
+          healthGoals: [category],
+          shortDesc: shortDesc,
+          fullDesc: fullDesc,
+          benefits: benefits,
+          ingredients: ingredients,
+          usage: usage,
+          caution: caution,
+          isCustom: existing.isCustom || id.startsWith("custom-"),
+          updatedAt: new Date().toISOString()
+        };
+
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.innerHTML = `<span>Saving Changes... ⏳</span>`;
+        }
+
+        // 1. Save locally to Store (custom store & local storage)
+        if (typeof saveStoreProduct === "function") {
+          saveStoreProduct(updatedProduct);
+        }
+
+        // 2. Sync to Backend Server & SQL DB
+        try {
+          await fetch(`${getApiBaseUrl()}/api/products`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedProduct)
+          });
+        } catch (serverErr) {
+          console.warn("[ADMIN] Could not sync edited product to server immediately:", serverErr.message);
+        }
+
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = `<span>✓ Save Changes</span>`;
+        }
+
+        closeModal();
+        showAdminToast(`'${name}' updated successfully! Changes are live across the store.`, "✓");
+
+        // Re-render views
+        renderManageTable();
+        renderInventoryTracker();
+        updateStats();
+      });
     }
   }
 
@@ -2312,6 +2584,7 @@
   // --- LOAD DASHBOARD ---
   function loadDashboard() {
     populateCategorySelect();
+    populateEditCategorySelect();
     updateStats();
     initOrdersModule();
     initInventoryModule();
@@ -2781,6 +3054,7 @@
     initImageHandlers();
     populateCategorySelect();
     initProductForm();
+    initEditProductModule();
     initCategoryManagement();
     initQuickCategoryModal();
     initOrdersModule();

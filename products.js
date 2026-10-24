@@ -475,12 +475,14 @@ function getStoreProducts() {
     console.warn("Could not read deleted products from storage", e);
   }
 
-  // Filter default catalog
-  const activeBase = PRODUCTS_DATA.filter(p => !deleted.includes(p.id));
   // Filter custom admin products
   const activeCustom = custom.filter(p => !deleted.includes(p.id));
+  const customIds = new Set(activeCustom.map(p => p.id));
 
-  // Admin products come first so new arrivals are highlighted!
+  // Filter default catalog (exclude deleted items and items that have been customized/edited)
+  const activeBase = PRODUCTS_DATA.filter(p => !deleted.includes(p.id) && !customIds.has(p.id));
+
+  // Edited / custom products take precedence!
   return [...activeCustom, ...activeBase];
 }
 

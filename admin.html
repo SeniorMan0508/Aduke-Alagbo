@@ -1864,6 +1864,131 @@
           <button type="submit" class="btn-primary" id="saveRestockBtn"><span>✓ Save Stock</span></button>
         </div>
       </form>
+  </div>
+  </div>
+
+  <!-- EDIT PRODUCT MODAL -->
+  <div class="admin-gatekeeper-overlay" id="editProductModal" style="display: none; z-index: 10000;">
+    <div class="admin-gate-card" style="max-width: 680px; text-align: left; max-height: 90vh; overflow-y: auto; padding: 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(24, 66, 46, 0.1); padding-bottom: 1rem; margin-bottom: 1.25rem;">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span style="font-size: 1.4rem;">✏️</span>
+          <div>
+            <h3 style="color: var(--deep-forest); margin: 0; font-size: 1.25rem;">Edit Herbal Remedy</h3>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0.2rem 0 0 0;" id="editModalSub">Update price, description, images, or remedy details</p>
+          </div>
+        </div>
+        <button type="button" id="closeEditProductModalBtn" style="background: #f1f5f9; border: none; width: 34px; height: 34px; border-radius: 50%; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #475569;">✕</button>
+      </div>
+
+      <form id="editProductForm" onsubmit="return false;">
+        <input type="hidden" id="editProdId">
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="editProdName">Remedy Name *</label>
+            <input type="text" id="editProdName" class="form-input" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="editProdCategory">Category *</label>
+            <select id="editProdCategory" class="form-input" required>
+              <!-- Dynamically populated -->
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="editProdSubtitle">Tagline / Subtitle</label>
+          <input type="text" id="editProdSubtitle" class="form-input">
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="editProdPrice">Selling Price (₦) *</label>
+            <input type="number" id="editProdPrice" class="form-input" required min="100">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="editProdOriginalPrice">Original Market Price (₦) (Strikethrough)</label>
+            <input type="number" id="editProdOriginalPrice" class="form-input" placeholder="e.g. 10000">
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="editProdBadge">Badge Text (Optional)</label>
+            <input type="text" id="editProdBadge" class="form-input" placeholder="e.g. Bestseller, High Demand">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="editProdBadgeType">Badge Style</label>
+            <select id="editProdBadgeType" class="form-input">
+              <option value="gold">Gold Premium (Bestseller)</option>
+              <option value="hot">Hot Red (High Demand)</option>
+              <option value="organic">Green (100% Organic)</option>
+              <option value="featured">Blue (Doctor Approved)</option>
+              <option value="standard">Standard Forest Green</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Image edit -->
+        <div class="form-group" style="background: #f8faf9; padding: 1rem; border-radius: var(--radius-md); border: 1px solid rgba(24, 66, 46, 0.12); margin-bottom: 1rem;">
+          <label class="form-label" style="font-weight: 700; margin-bottom: 0.35rem;">Product Image</label>
+          <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 0.65rem;">
+            <img id="editActiveImagePreview" src="images/agbo-jedi.jpg" alt="Preview" style="width: 58px; height: 58px; object-fit: cover; border-radius: var(--radius-sm); border: 2px solid var(--primary-green);">
+            <div style="flex: 1;">
+              <input type="text" id="editProdImageUrl" class="form-input" placeholder="Image URL or path (e.g. images/agbo-jedi.jpg)" style="font-size: 0.85rem; padding: 0.45rem 0.65rem;">
+            </div>
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+            Or upload a replacement photo from your device:
+          </div>
+          <input type="file" id="editProdImageFile" accept="image/*" class="form-input" style="padding: 0.4rem; font-size: 0.82rem;">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="editProdShortDesc">Short Summary (Shown on product cards) *</label>
+          <textarea id="editProdShortDesc" class="form-input" rows="2" required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="editProdFullDesc">Full Traditional Description</label>
+          <textarea id="editProdFullDesc" class="form-input" rows="3"></textarea>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="editProdBenefits">Key Health Benefits (One benefit per line)</label>
+            <textarea id="editProdBenefits" class="form-input" rows="3"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="editProdIngredients">Herbal Ingredients (One ingredient per line)</label>
+            <textarea id="editProdIngredients" class="form-input" rows="3"></textarea>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="editProdUsage">Dosage & How to Take</label>
+            <input type="text" id="editProdUsage" class="form-input">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="editProdCaution">Caution & Warnings</label>
+            <input type="text" id="editProdCaution" class="form-input">
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; border-top: 1px solid #e2e8f0; padding-top: 1.25rem;">
+          <button type="button" class="btn-secondary" id="cancelEditProductBtn" style="color: var(--deep-forest);">Cancel</button>
+          <button type="submit" class="btn-primary" id="saveEditProductBtn" style="padding: 0.65rem 1.4rem;">
+            <span>✓ Save Changes</span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

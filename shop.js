@@ -21,6 +21,17 @@
     return "₦" + Number(num).toLocaleString("en-NG");
   }
 
+  // HTML entity sanitizer to protect against Stored and Reflected XSS
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   // Dynamically render sidebar categories with live counters
   function renderSidebarCategories() {
     const list = document.getElementById("sidebarCategoryList");
@@ -154,31 +165,31 @@
         : "";
 
       return `
-        <div class="product-card" data-id="${product.id}">
-          <div class="product-thumb-container" onclick="window.app && window.app.openQuickView ? window.app.openQuickView('${product.id}') : null" style="cursor: pointer;">
-            ${product.badge ? `<span class="product-badge ${product.badgeType || 'standard'}">${product.badge}</span>` : ''}
-            <img src="${product.image}" alt="${product.name}" loading="lazy" decoding="async" onerror="this.src='images/agbo-jedi.jpg'">
-            <button class="quick-view-overlay-btn" onclick="event.stopPropagation(); window.app && window.app.openQuickView ? window.app.openQuickView('${product.id}') : null">
+        <div class="product-card" data-id="${escapeHtml(product.id)}">
+          <div class="product-thumb-container" onclick="window.app && window.app.openQuickView ? window.app.openQuickView('${escapeHtml(product.id)}') : null" style="cursor: pointer;">
+            ${product.badge ? `<span class="product-badge ${escapeHtml(product.badgeType || 'standard')}">${escapeHtml(product.badge)}</span>` : ''}
+            <img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}" loading="lazy" decoding="async" onerror="this.src='images/agbo-jedi.jpg'">
+            <button class="quick-view-overlay-btn" onclick="event.stopPropagation(); window.app && window.app.openQuickView ? window.app.openQuickView('${escapeHtml(product.id)}') : null">
               🔍 Quick Details
             </button>
           </div>
 
           <div class="product-card-body">
             <div class="product-meta-row">
-              <span class="product-category-tag">${product.categoryLabel || 'Agbo & Tonics'}</span>
+              <span class="product-category-tag">${escapeHtml(product.categoryLabel || 'Agbo & Tonics')}</span>
               <span class="product-rating">★ ${(product.rating || 5).toFixed(1)} (${product.reviewsCount || 120})</span>
             </div>
 
-            <h3 class="product-title">${product.name}</h3>
-            ${product.subtitle ? `<p class="product-subtitle-tag">${product.subtitle}</p>` : ''}
-            <p class="product-desc">${product.shortDesc}</p>
+            <h3 class="product-title">${escapeHtml(product.name)}</h3>
+            ${product.subtitle ? `<p class="product-subtitle-tag">${escapeHtml(product.subtitle)}</p>` : ''}
+            <p class="product-desc">${escapeHtml(product.shortDesc)}</p>
 
             <div class="product-card-footer">
               <div class="product-price-stack">
                 <span class="current-price">${formatNaira(product.price)}</span>
                 ${origPriceHtml}
               </div>
-              <button class="add-to-cart-btn" onclick="window.app && window.app.addToCart ? window.app.addToCart('${product.id}') : null">
+              <button class="add-to-cart-btn" onclick="window.app && window.app.addToCart ? window.app.addToCart('${escapeHtml(product.id)}') : null">
                 <span>+ Add</span>
               </button>
             </div>

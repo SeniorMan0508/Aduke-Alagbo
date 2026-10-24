@@ -46,7 +46,18 @@
   }
 
   function getFallbackPasscode() {
-    return localStorage.getItem(PASSCODE_STORAGE_KEY) || "aduke2026";
+    return localStorage.getItem(PASSCODE_STORAGE_KEY) || "";
+  }
+
+  // --- HTML ENTITY ENCODING (Stored & Reflected XSS Protection) ---
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   // --- API BASE URL HELPER (Auto-routes to current host or local server) ---
@@ -68,6 +79,23 @@
       return "http://localhost:3000";
     }
     return "";
+  }
+
+  // --- AUTHENTICATED FETCH HELPER (Automatically attaches Bearer Session Token) ---
+  function authFetch(url, options = {}) {
+    const token = getStoredToken();
+    const headers = {
+      ...(options.headers || {})
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    return fetch(url, { ...options, headers }).then(res => {
+      if (res.status === 401) {
+        console.warn("[ADMIN AUTH] Unauthorized response received (401). Session may be invalid or expired.");
+      }
+      return res;
+    });
   }
 
   // --- PASSCODE GATEKEEPER ---
@@ -156,9 +184,9 @@
         }
       }
 
-      // 2. Fallback check against localStorage or master key
+      // 2. Fallback check against localStorage passcode
       const fallbackPin = getFallbackPasscode();
-      if (enteredPin === fallbackPin || enteredPin === "aduke2026" || enteredPin === "quadace2026") {
+      if (enteredPin === fallbackPin) {
         sessionStorage.setItem(AUTH_KEY, "true");
         if (errorEl) errorEl.style.display = "none";
         if (gatekeeper) gatekeeper.style.display = "none";
@@ -279,44 +307,62 @@
       });
     }
 
-    // Emergency master key submit handler
+    // Emergency master key submit handler (Server Authenticated)
     if (emergencyForm) {
-      emergencyForm.addEventListener("submit", (e) => {
+      emergencyForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const masterKey = emergencyMasterKeyInput ? emergencyMasterKeyInput.value.trim() : "";
         const newPass = emergencyNewPasscodeInput ? emergencyNewPasscodeInput.value.trim() : "";
 
-        if (masterKey !== "aduke2026" && masterKey !== "quadace2026") {
-          showEmergencyMsg("Invalid Master Recovery Key. The master key is aduke2026.");
+        if (!masterKey) {
+          showEmergencyMsg("Master Recovery Key is required.");
           return;
         }
 
-        if (newPass.length < 4) {
-          showEmergencyMsg("New passcode must be at least 4 characters long.");
+        if (newPass.length < 8) {
+          showEmergencyMsg("New passcode must be at least 8 characters long.");
           return;
         }
 
-        // Apply new passcode
-        localStorage.setItem(PASSCODE_STORAGE_KEY, newPass);
-        sessionStorage.setItem(AUTH_KEY, "true");
-        showEmergencyMsg("Passcode reset successfully via Master Key! 🔐", false);
-        showAdminToast("Passcode reset successfully via Master Key! 🔐", "✓");
+        const submitBtn = document.getElementById("submitEmergencyResetBtn");
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = `<span>Verifying Key... ⏳</span>`;
+        }
 
-        // Attempt async update to backend
         try {
-          fetch(`${getApiBaseUrl()}/api/auth/change-password`, {
+          const res = await fetch(`${getApiBaseUrl()}/api/auth/emergency-reset`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ currentPassword: "aduke2026", newPassword: newPass })
-          }).catch(() => {});
-        } catch (e) {}
+            body: JSON.stringify({ masterKey, newPassword: newPass })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            if (data.token) {
+              sessionStorage.setItem("aduke_admin_token", data.token);
+            }
+            sessionStorage.setItem(AUTH_KEY, "true");
+            localStorage.setItem(PASSCODE_STORAGE_KEY, newPass);
+            showEmergencyMsg("Passcode reset successfully via Master Key! 🔐", false);
+            showAdminToast("Passcode reset successfully via Master Key! 🔐", "✓");
 
-        setTimeout(() => {
-          closeModal();
-          const gatekeeper = document.getElementById("adminGatekeeper");
-          if (gatekeeper) gatekeeper.style.display = "none";
-          loadDashboard();
-        }, 1000);
+            setTimeout(() => {
+              closeModal();
+              const gatekeeper = document.getElementById("adminGatekeeper");
+              if (gatekeeper) gatekeeper.style.display = "none";
+              loadDashboard();
+            }, 1000);
+          } else {
+            showEmergencyMsg(data.message || "Invalid Master Recovery Key. Access denied.");
+          }
+        } catch (err) {
+          showEmergencyMsg("Could not connect to server to verify Master Recovery Key.");
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<span>Instant Reset Passcode ⚡</span>`;
+          }
+        }
       });
     }
 
@@ -666,6 +712,13 @@
         saveStoreProduct(newProduct);
       }
 
+      // Sync to backend server
+      authFetch(`${getApiBaseUrl()}/api/products`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProduct)
+      }).catch(err => console.warn("[ADMIN] Could not sync new product to server immediately:", err.message));
+
       showAdminToast(
         editingProductId ? `Updated '${name}' successfully!` : `✨ '${name}' published! Now live on Shop page.`,
         "🌿"
@@ -786,16 +839,16 @@
         : `<span class="source-badge default">🌱 Default</span>`;
 
       return `
-        <tr data-id="${p.id}">
+        <tr data-id="${escapeHtml(p.id)}">
           <td>
-            <img src="${p.image}" alt="${p.name}" class="product-table-thumb" onerror="this.src='images/agbo-jedi.jpg'">
+            <img src="${escapeHtml(p.image)}" alt="${escapeHtml(p.name)}" class="product-table-thumb" onerror="this.src='images/agbo-jedi.jpg'">
           </td>
           <td>
-            <div style="font-weight: 700; color: var(--deep-forest);">${p.name}</div>
-            <div style="font-size: 0.78rem; color: var(--text-muted);">${p.subtitle || ''}</div>
+            <div style="font-weight: 700; color: var(--deep-forest);">${escapeHtml(p.name)}</div>
+            <div style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(p.subtitle || '')}</div>
           </td>
           <td>
-            <span class="product-category-tag">${p.categoryLabel || p.category}</span>
+            <span class="product-category-tag">${escapeHtml(p.categoryLabel || p.category)}</span>
           </td>
           <td style="font-weight: 800; color: var(--primary-green);">
             ₦${Number(p.price).toLocaleString("en-NG")}
@@ -804,10 +857,10 @@
             ${sourceBadge}
           </td>
           <td style="text-align: right; white-space: nowrap;">
-            <button type="button" class="btn-action-edit" data-id="${p.id}" data-name="${p.name}" style="background: rgba(24, 66, 46, 0.08); color: var(--deep-forest); border: 1px solid rgba(24, 66, 46, 0.2); padding: 0.35rem 0.65rem; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 700; cursor: pointer; margin-right: 0.35rem; transition: all 0.2s ease;">
+            <button type="button" class="btn-action-edit" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" style="background: rgba(24, 66, 46, 0.08); color: var(--deep-forest); border: 1px solid rgba(24, 66, 46, 0.2); padding: 0.35rem 0.65rem; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 700; cursor: pointer; margin-right: 0.35rem; transition: all 0.2s ease;">
               ✏️ Edit
             </button>
-            <button type="button" class="btn-action-del" data-id="${p.id}" data-name="${p.name}">
+            <button type="button" class="btn-action-del" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}">
               🗑️ Remove
             </button>
             <a href="shop.html" target="_blank" class="btn-action-view" style="margin-left: 0.35rem;">
@@ -847,6 +900,10 @@
       updateStats();
       renderManageTable();
     }
+
+    try {
+      authFetch(`${getApiBaseUrl()}/api/products/${encodeURIComponent(productId)}`, { method: "DELETE" }).catch(() => {});
+    } catch (e) {}
   }
 
   // --- EDIT PRODUCT MODAL CONTROLLER ---
@@ -1083,9 +1140,9 @@
           saveStoreProduct(updatedProduct);
         }
 
-        // 2. Sync to Backend Server & SQL DB
+        // 2. Sync to Backend Server & SQL DB (Admin Authenticated)
         try {
-          await fetch(`${getApiBaseUrl()}/api/products`, {
+          await authFetch(`${getApiBaseUrl()}/api/products`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(updatedProduct)
@@ -1195,27 +1252,27 @@
       const dateStr = rev.createdAt ? new Date(rev.createdAt).toLocaleDateString("en-GB", { day: 'numeric', month: 'short', year: 'numeric' }) : "Verified Buyer";
 
       return `
-        <tr data-review-id="${rev.id}">
+        <tr data-review-id="${escapeHtml(rev.id)}">
           <td>
-            <div style="font-weight: 700; color: var(--deep-forest);">${rev.name}</div>
-            <div style="font-size: 0.78rem; color: var(--text-muted);">${rev.location || 'Nigeria'}</div>
+            <div style="font-weight: 700; color: var(--deep-forest);">${escapeHtml(rev.name)}</div>
+            <div style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(rev.location || 'Nigeria')}</div>
           </td>
           <td>
-            <span class="product-category-tag" style="background: rgba(39, 174, 96, 0.1); color: #1e7040;">🌿 ${rev.remedy || 'Traditional Remedy'}</span>
+            <span class="product-category-tag" style="background: rgba(39, 174, 96, 0.1); color: #1e7040;">🌿 ${escapeHtml(rev.remedy || 'Traditional Remedy')}</span>
           </td>
           <td style="color: #f59e0b; font-size: 1.1rem; white-space: nowrap;">
-            ${stars} <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">(${rev.rating || 5}.0)</span>
+            ${stars} <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">(${escapeHtml(rev.rating || 5)}.0)</span>
           </td>
           <td>
             <div style="font-size: 0.88rem; color: var(--text-primary); line-height: 1.5; max-width: 420px; font-style: italic;">
-              "${rev.comment}"
+              "${escapeHtml(rev.comment)}"
             </div>
           </td>
           <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
-            ${dateStr}
+            ${escapeHtml(dateStr)}
           </td>
           <td style="text-align: right; white-space: nowrap;">
-            <button type="button" class="btn-action-del btn-del-review" data-id="${rev.id}" data-name="${rev.name}">
+            <button type="button" class="btn-action-del btn-del-review" data-id="${escapeHtml(rev.id)}" data-name="${escapeHtml(rev.name)}">
               🗑️ Delete
             </button>
           </td>
@@ -1235,7 +1292,7 @@
     if (!confirmed) return;
 
     try {
-      await fetch(`${getApiBaseUrl()}/api/reviews/${reviewId}`, { method: "DELETE" });
+      await authFetch(`${getApiBaseUrl()}/api/reviews/${encodeURIComponent(reviewId)}`, { method: "DELETE" });
     } catch (e) {}
 
     try {
@@ -1479,11 +1536,11 @@
       // Items list mini
       const itemsListHtml = (ord.items || []).map(it => `
         <div class="order-item-mini">
-          <img src="${it.image || 'images/agbo-jedi.jpg'}" alt="${it.name}" class="order-item-thumb" onerror="this.src='images/agbo-jedi.jpg'">
+          <img src="${escapeHtml(it.image || 'images/agbo-jedi.jpg')}" alt="${escapeHtml(it.name)}" class="order-item-thumb" onerror="this.src='images/agbo-jedi.jpg'">
           <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 700; color: var(--deep-forest); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${it.name}</div>
+            <div style="font-weight: 700; color: var(--deep-forest); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(it.name)}</div>
             <div style="font-size: 0.76rem; color: var(--text-muted);">
-              Qty: <strong>x${it.quantity}</strong> • ${formatNaira(it.price)} each
+              Qty: <strong>x${Number(it.quantity) || 1}</strong> • ${formatNaira(it.price)} each
             </div>
           </div>
           <div style="font-weight: 800; color: var(--primary-green); font-size: 0.88rem;">
@@ -1497,7 +1554,7 @@
       const hasReceipt = Boolean(ord.receiptProof && (ord.receiptProof.hasReceipt || ord.receiptProof.dataUrl));
       const receiptHtml = hasReceipt ? `
         <div style="margin-top: 0.5rem;">
-          <button type="button" class="order-receipt-chip btn-inspect-receipt" data-ref="${ord.orderRef}">
+          <button type="button" class="order-receipt-chip btn-inspect-receipt" data-ref="${escapeHtml(ord.orderRef)}">
             <span>🧾</span> <span>Inspect Attached Receipt Screenshot</span> <span>👁️</span>
           </button>
         </div>
@@ -1515,14 +1572,14 @@
       const dateStr = ord.createdAt ? new Date(ord.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recently';
 
       return `
-        <div class="order-card" data-ref="${ord.orderRef}">
+        <div class="order-card" data-ref="${escapeHtml(ord.orderRef)}">
           <!-- Order Header -->
           <div class="order-header-row">
             <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-              <span class="order-ref-badge">${ord.orderRef}</span>
+              <span class="order-ref-badge">${escapeHtml(ord.orderRef)}</span>
               <span class="order-status-pill ${curStatus.class}">${curStatus.label}</span>
               <span style="font-size: 0.8rem; color: var(--text-muted);">
-                📅 ${dateStr} • <strong>${timeAgo(ord.createdAt)}</strong>
+                📅 ${escapeHtml(dateStr)} • <strong>${timeAgo(ord.createdAt)}</strong>
               </span>
             </div>
 
@@ -1539,18 +1596,18 @@
             <div class="order-box-panel">
               <div class="order-box-title">👤 Customer Delivery Info</div>
               <div style="font-weight: 800; color: var(--deep-forest); font-size: 0.98rem; margin-bottom: 0.25rem;">
-                ${ord.customer ? ord.customer.name : 'Valued Customer'}
+                ${ord.customer ? escapeHtml(ord.customer.name) : 'Valued Customer'}
               </div>
               <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
                 <span>📞</span>
-                <strong><a href="tel:${cleanPhone}" style="color: var(--primary-green); text-decoration: none;">${ord.customer ? ord.customer.phone : 'Not provided'}</a></strong>
+                <strong><a href="tel:${escapeHtml(cleanPhone)}" style="color: var(--primary-green); text-decoration: none;">${ord.customer ? escapeHtml(ord.customer.phone) : 'Not provided'}</a></strong>
               </div>
               <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45; margin-bottom: 0.4rem;">
-                📍 ${ord.customer ? ord.customer.address : 'No delivery address'}
+                📍 ${ord.customer ? escapeHtml(ord.customer.address) : 'No delivery address'}
               </div>
               ${ord.customer && ord.customer.notes ? `
                 <div style="font-size: 0.75rem; color: #b45309; background: #fffbeb; padding: 0.35rem 0.5rem; border-radius: var(--radius-sm); border-left: 3px solid #f59e0b;">
-                  💬 "${ord.customer.notes}"
+                  💬 "${escapeHtml(ord.customer.notes)}"
                 </div>
               ` : ''}
             </div>
@@ -1571,9 +1628,9 @@
               </div>
               ${isBank && ord.senderDetails ? `
                 <div style="font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5;">
-                  ${ord.senderDetails.bank ? `<div>Bank: <strong>${ord.senderDetails.bank}</strong></div>` : ''}
-                  ${ord.senderDetails.name ? `<div>Sender: <strong>${ord.senderDetails.name}</strong></div>` : ''}
-                  ${ord.senderDetails.sessionId ? `<div style="font-family: monospace;">Ref: <strong>${ord.senderDetails.sessionId}</strong></div>` : ''}
+                  ${ord.senderDetails.bank ? `<div>Bank: <strong>${escapeHtml(ord.senderDetails.bank)}</strong></div>` : ''}
+                  ${ord.senderDetails.name ? `<div>Sender: <strong>${escapeHtml(ord.senderDetails.name)}</strong></div>` : ''}
+                  ${ord.senderDetails.sessionId ? `<div style="font-family: monospace;">Ref: <strong>${escapeHtml(ord.senderDetails.sessionId)}</strong></div>` : ''}
                 </div>
               ` : ''}
               ${receiptHtml}
@@ -1955,12 +2012,12 @@
         <tr>
           <td style="padding: 0.75rem 0.85rem;">
             <div style="display: flex; align-items: center; gap: 0.65rem;">
-              <img src="${it.image || 'images/agbo-jedi.jpg'}" alt="${it.name}" class="product-table-thumb" style="width: 38px; height: 38px;" onerror="this.src='images/agbo-jedi.jpg'">
-              <strong style="color: var(--deep-forest); font-size: 0.88rem;">${it.name}</strong>
+              <img src="${escapeHtml(it.image || 'images/agbo-jedi.jpg')}" alt="${escapeHtml(it.name || 'Remedy')}" class="product-table-thumb" style="width: 38px; height: 38px;" onerror="this.src='images/agbo-jedi.jpg'">
+              <strong style="color: var(--deep-forest); font-size: 0.88rem;">${escapeHtml(it.name || 'Herbal Remedy')}</strong>
             </div>
           </td>
           <td style="padding: 0.75rem 0.85rem; text-align: center; font-weight: 800;">
-            x${it.quantity}
+            x${Number(it.quantity) || 1}
           </td>
           <td style="padding: 0.75rem 0.85rem; text-align: right; color: var(--text-secondary);">
             ${formatNaira(it.price)}
@@ -2078,10 +2135,10 @@
       }
     }
 
-    // Sync to backend API
+    // Sync to backend API (Admin Authenticated)
     try {
       const cleanRef = orderRef.replace(/^#/, '');
-      await fetch(`${getApiBaseUrl()}/api/orders/${encodeURIComponent(cleanRef)}/status`, {
+      await authFetch(`${getApiBaseUrl()}/api/orders/${encodeURIComponent(cleanRef)}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus, note })
@@ -2150,9 +2207,9 @@
     updateStats();
     showAdminToast(`Order ${orderRef} deleted.`, "🗑️");
 
-    // 5. Delete on backend API
+    // 5. Delete on backend API (Admin Authenticated)
     try {
-      await fetch(`${getApiBaseUrl()}/api/orders/${encodeURIComponent(cleanRef)}`, { method: "DELETE" });
+      await authFetch(`${getApiBaseUrl()}/api/orders/${encodeURIComponent(cleanRef)}`, { method: "DELETE" });
     } catch (e) {
       console.warn("Backend order delete error:", e);
     }
@@ -2248,7 +2305,7 @@
   // Sync Orders from Server (Smart merge without reviving deleted orders)
   async function syncOrdersFromServer() {
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/orders`);
+      const res = await authFetch(`${getApiBaseUrl()}/api/orders`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.orders)) {
@@ -2548,8 +2605,8 @@
           setStoreProductStock(id, qty, threshold);
         }
 
-        // Also post to backend inventory API
-        fetch(`${getApiBaseUrl()}/api/inventory`, {
+        // Also post to backend inventory API (Admin Authenticated)
+        authFetch(`${getApiBaseUrl()}/api/inventory`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ productId: id, stock: qty, lowStockThreshold: threshold })
@@ -2874,7 +2931,7 @@
     }
 
     try {
-      await fetch(`${getApiBaseUrl()}/api/categories/${catId}`, { method: "DELETE" });
+      await authFetch(`${getApiBaseUrl()}/api/categories/${encodeURIComponent(catId)}`, { method: "DELETE" });
     } catch (e) {}
 
     showAdminToast(`Category '${catName}' removed.`, "🗑️");
@@ -2916,7 +2973,7 @@
 
         if (newCat) {
           try {
-            await fetch(`${getApiBaseUrl()}/api/categories`, {
+            await authFetch(`${getApiBaseUrl()}/api/categories`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(newCat)
@@ -3000,7 +3057,7 @@
 
         if (newCat) {
           try {
-            await fetch(`${getApiBaseUrl()}/api/categories`, {
+            await authFetch(`${getApiBaseUrl()}/api/categories`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(newCat)

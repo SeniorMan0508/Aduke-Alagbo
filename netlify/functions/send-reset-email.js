@@ -2,9 +2,11 @@ const nodemailer = require('nodemailer');
 const { ADUKE_LOGO_BASE64 } = require('./logo-asset');
 
 const SMTP_USER = (process.env.SMTP_USER || "badmusdaniel0508@gmail.com").trim();
-const SMTP_PASS = (process.env.SMTP_PASS || "educsevpysrjmcuw").replace(/\s+/g, '');
+const SMTP_PASS = (process.env.SMTP_PASS || "").replace(/\s+/g, '');
+const DEFAULT_OWNER_EMAIL = (process.env.ADMIN_EMAIL || process.env.SMTP_USER || "badmusdaniel0508@gmail.com").trim().toLowerCase();
 
 function getEmailTransporter() {
+  if (!SMTP_PASS) return null;
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
@@ -41,6 +43,16 @@ exports.handler = async (event, context) => {
 
   if (!toEmail || !code || code.toString().length < 6) {
     return { statusCode: 400, headers, body: JSON.stringify({ success: false, message: "Missing recipient email or valid 6-digit code" }) };
+  }
+
+  // Security Protection: Prevent open mail relay - only permit delivery to store administrator email
+  const normalizedTo = toEmail.toString().trim().toLowerCase();
+  if (normalizedTo !== DEFAULT_OWNER_EMAIL) {
+    return {
+      statusCode: 403,
+      headers,
+      body: JSON.stringify({ success: false, message: "Reset code can only be dispatched to the verified store administrator email." })
+    };
   }
 
   const transporter = getEmailTransporter();

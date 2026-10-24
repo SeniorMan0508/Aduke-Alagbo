@@ -41,7 +41,52 @@ if (fs.existsSync(ENV_PATH)) {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// --- SECURITY HEADERS MIDDLEWARE ---
+app.use((req, res, next) => {
+  // Prevent MIME type sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Prevent clickjacking in iframes (allow only SAMEORIGIN)
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  // Referrer policy
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Cross-site scripting legacy filter protection
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  // Restrict unused browser device APIs
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // Content Security Policy
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' https: data:; connect-src 'self' https:;"
+  );
+  // Remove X-Powered-By to prevent server fingerprinting
+  res.removeHeader('X-Powered-By');
+  next();
+});
+
+// --- SENSITIVE FILE PROTECTION SHIELD ---
+// Intercept direct HTTP attempts to download environment variables, source code, or private databases
+app.use((req, res, next) => {
+  const cleanPath = (req.path || '').toLowerCase();
+  // Block any hidden/dot files (.env, .git, etc.)
+  if (cleanPath.includes('/.') || cleanPath.startsWith('.')) {
+    return res.status(403).json({ success: false, message: 'Access Denied: Hidden system files are protected.' });
+  }
+  // Block internal server, database, and configuration files
+  if (
+    cleanPath.startsWith('/data') ||
+    cleanPath === '/server.js' ||
+    cleanPath === '/db.js' ||
+    cleanPath === '/package.json' ||
+    cleanPath === '/package-lock.json' ||
+    cleanPath.endsWith('.json') ||
+    cleanPath.endsWith('.md')
+  ) {
+    return res.status(403).json({ success: false, message: 'Access Denied: Internal application files are protected.' });
+  }
+  next();
+});
+
+// Core middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -92,11 +137,56 @@ function isValidSession(token) {
   return true;
 }
 
+// --- AUTHORIZATION MIDDLEWARE FOR ADMIN ENDPOINTS ---
+function requireAdminAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader ? authHeader.replace(/^Bearer\s+/, '').trim() : null;
+
+  if (!isValidSession(token)) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized: Valid admin authentication token required. Please log in.'
+    });
+  }
+  next();
+}
+
+// --- RATE LIMITING UTILITY (In-Memory IP Tracker for Auth Endpoints) ---
+const loginAttempts = new Map(); // ip -> { count, firstAttempt }
+const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_LOGIN_ATTEMPTS = 6; // Max 6 failed attempts per 15 min
+
+function checkLoginRateLimit(ip) {
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+  if (!record) return { allowed: true };
+  if (now - record.firstAttempt > LOGIN_RATE_LIMIT_WINDOW_MS) {
+    loginAttempts.delete(ip);
+    return { allowed: true };
+  }
+  if (record.count >= MAX_LOGIN_ATTEMPTS) {
+    const retryAfterSec = Math.ceil((record.firstAttempt + LOGIN_RATE_LIMIT_WINDOW_MS - now) / 1000);
+    return { allowed: false, retryAfterSec };
+  }
+  return { allowed: true };
+}
+
+function recordFailedLogin(ip) {
+  const now = Date.now();
+  const record = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
+  record.count += 1;
+  loginAttempts.set(ip, record);
+}
+
+function clearLoginAttempts(ip) {
+  loginAttempts.delete(ip);
+}
+
 // --- EMAIL SENDER CONFIGURATION ---
 const SMTP_USER = (process.env.SMTP_USER || "badmusdaniel0508@gmail.com").trim();
-const SMTP_PASS = (process.env.SMTP_PASS || "educsevpysrjmcuw").replace(/\s+/g, '');
+const SMTP_PASS = (process.env.SMTP_PASS || "").replace(/\s+/g, '');
 const DEFAULT_OWNER_EMAIL = (process.env.ADMIN_EMAIL || SMTP_USER || "badmusdaniel0508@gmail.com").trim();
-const DEFAULT_INITIAL_PASSWORD = "aduke2026";
+const DEFAULT_INITIAL_PASSWORD = (process.env.ADMIN_INITIAL_PASSWORD || "aduke2026").trim();
 
 function maskEmail(email) {
   if (!email || !email.includes('@')) return 'email***@gmail.com';
@@ -680,11 +770,20 @@ app.get('/api/auth/status', (req, res) => {
 
 /**
  * POST /api/auth/login
- * Verify entered password against encrypted hash
+ * Verify entered password against encrypted hash with rate limiting
  */
 app.post('/api/auth/login', (req, res) => {
+  const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+  const rateLimitStatus = checkLoginRateLimit(clientIp);
+  if (!rateLimitStatus.allowed) {
+    return res.status(429).json({
+      success: false,
+      message: `Too many failed login attempts. Please wait ${rateLimitStatus.retryAfterSec} seconds before trying again.`
+    });
+  }
+
   const { password } = req.body;
-  if (!password) {
+  if (!password || typeof password !== 'string') {
     return res.status(400).json({ success: false, message: 'Password is required' });
   }
 
@@ -693,11 +792,20 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(500).json({ success: false, message: 'Server auth data unavailable' });
   }
 
-  const isValid = verifySecret(password, auth.passwordHash) || password === "aduke2026" || password === "quadace2026";
+  // Cryptographically verify secret against scrypt hash
+  let isValid = verifySecret(password, auth.passwordHash);
+
+  // If store is still using default factory state, check default initial password
+  if (!isValid && auth.isDefaultPassword && password === DEFAULT_INITIAL_PASSWORD) {
+    isValid = true;
+  }
+
   if (!isValid) {
+    recordFailedLogin(clientIp);
     return res.status(401).json({ success: false, message: 'Incorrect admin passcode' });
   }
 
+  clearLoginAttempts(clientIp);
   const token = createSession();
   res.json({
     success: true,
@@ -708,13 +816,26 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 /**
+ * POST /api/auth/logout
+ * Invalidate active admin session token
+ */
+app.post('/api/auth/logout', (req, res) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader ? authHeader.replace(/^Bearer\s+/, '').trim() : null;
+  if (token && activeSessions.has(token)) {
+    activeSessions.delete(token);
+  }
+  res.json({ success: true, message: 'Logged out successfully' });
+});
+
+/**
  * POST /api/auth/change-password
- * Change password when current password is known
+ * Change password when current password is known or with valid active session
  */
 app.post('/api/auth/change-password', (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const authHeader = req.headers.authorization;
-  const token = authHeader ? authHeader.replace(/^Bearer\s+/, '') : null;
+  const token = authHeader ? authHeader.replace(/^Bearer\s+/, '').trim() : null;
 
   const auth = getAuthData();
   if (!auth) {
@@ -724,16 +845,23 @@ app.post('/api/auth/change-password', (req, res) => {
   let isAuthorized = false;
   if (token && isValidSession(token)) {
     isAuthorized = true;
-  } else if (currentPassword && (verifySecret(currentPassword, auth.passwordHash) || currentPassword === "aduke2026" || currentPassword === "quadace2026")) {
-    isAuthorized = true;
+  } else if (currentPassword && typeof currentPassword === 'string') {
+    if (verifySecret(currentPassword, auth.passwordHash)) {
+      isAuthorized = true;
+    } else if (auth.isDefaultPassword && currentPassword === DEFAULT_INITIAL_PASSWORD) {
+      isAuthorized = true;
+    }
   }
 
   if (!isAuthorized) {
     return res.status(401).json({ success: false, message: 'Current passcode is incorrect' });
   }
 
-  if (!newPassword || newPassword.trim().length < 4) {
-    return res.status(400).json({ success: false, message: 'New passcode must be at least 4 characters' });
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 8) {
+    return res.status(400).json({
+      success: false,
+      message: 'New passcode must be at least 8 characters long for security'
+    });
   }
 
   auth.passwordHash = hashSecret(newPassword.trim());
@@ -823,7 +951,7 @@ app.post('/api/auth/verify-reset-code', (req, res) => {
     });
   }
 
-  const cleanCode = code.trim();
+  const cleanCode = code.toString().trim();
   const currentCodes = loadResetCodes();
   const record = currentCodes.get(cleanCode) || activeResetCodes.get(cleanCode);
 
@@ -844,10 +972,10 @@ app.post('/api/auth/verify-reset-code', (req, res) => {
     });
   }
 
-  if (newPassword.trim().length < 4) {
+  if (typeof newPassword !== 'string' || newPassword.trim().length < 8) {
     return res.status(400).json({
       success: false,
-      message: 'New passcode must be at least 4 characters long'
+      message: 'New passcode must be at least 8 characters long for security'
     });
   }
 
@@ -868,6 +996,53 @@ app.post('/api/auth/verify-reset-code', (req, res) => {
     success: true,
     token: newToken,
     message: 'Admin passcode reset successfully! You are now logged in.'
+  });
+});
+
+/**
+ * POST /api/auth/emergency-reset
+ * Emergency password reset using server-side ADMIN_MASTER_KEY environment secret
+ */
+app.post('/api/auth/emergency-reset', (req, res) => {
+  const { masterKey, newPassword } = req.body || {};
+  const serverMasterKey = process.env.ADMIN_MASTER_KEY;
+
+  if (!serverMasterKey) {
+    return res.status(503).json({
+      success: false,
+      message: 'Master Key reset is disabled because ADMIN_MASTER_KEY is not configured on the server. Please reset your passcode via Email Verification Code.'
+    });
+  }
+
+  if (!masterKey || typeof masterKey !== 'string' || masterKey.trim() !== serverMasterKey.trim()) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid Master Recovery Key. Access denied.'
+    });
+  }
+
+  if (typeof newPassword !== 'string' || newPassword.trim().length < 8) {
+    return res.status(400).json({
+      success: false,
+      message: 'New passcode must be at least 8 characters long for security'
+    });
+  }
+
+  const auth = getAuthData();
+  auth.passwordHash = hashSecret(newPassword.trim());
+  auth.isDefaultPassword = false;
+  auth.updatedAt = new Date().toISOString();
+  saveAuthData(auth);
+
+  db.setAdminPassword(newPassword.trim()).catch(e => console.warn('[DB MASTER RESET WARN]', e.message));
+
+  const newToken = createSession();
+  console.log(`[AUTH] Admin password reset via Master Recovery Key at ${new Date().toISOString()}`);
+
+  res.json({
+    success: true,
+    token: newToken,
+    message: 'Passcode reset successfully via Master Recovery Key! You are now logged in.'
   });
 });
 
@@ -948,9 +1123,9 @@ app.get('/api/products', (req, res) => {
 
 /**
  * POST /api/products
- * Save a new or edited product
+ * Save a new or edited product (Admin Only)
  */
-app.post('/api/products', (req, res) => {
+app.post('/api/products', requireAdminAuth, (req, res) => {
   const product = req.body;
   if (!product || !product.id || !product.name) {
     return res.status(400).json({ success: false, message: 'Invalid product data' });
@@ -970,9 +1145,9 @@ app.post('/api/products', (req, res) => {
 
 /**
  * DELETE /api/products/:id
- * Remove a product
+ * Remove a product (Admin Only)
  */
-app.delete('/api/products/:id', (req, res) => {
+app.delete('/api/products/:id', requireAdminAuth, (req, res) => {
   const { id } = req.params;
   let products = getCustomProducts();
   products = products.filter(p => p.id !== id);
@@ -1015,9 +1190,9 @@ app.get('/api/categories', (req, res) => {
 
 /**
  * POST /api/categories
- * Add or update a category
+ * Add or update a category (Admin Only)
  */
-app.post('/api/categories', (req, res) => {
+app.post('/api/categories', requireAdminAuth, (req, res) => {
   const cat = req.body;
   if (!cat || (!cat.name && !cat.label)) {
     return res.status(400).json({ success: false, message: 'Invalid category data' });
@@ -1048,9 +1223,9 @@ app.post('/api/categories', (req, res) => {
 
 /**
  * DELETE /api/categories/:id
- * Remove a custom category
+ * Remove a custom category (Admin Only)
  */
-app.delete('/api/categories/:id', (req, res) => {
+app.delete('/api/categories/:id', requireAdminAuth, (req, res) => {
   const { id } = req.params;
   let categories = getCustomCategories();
   categories = categories.filter(c => c.id !== id);
@@ -1164,9 +1339,9 @@ app.post('/api/reviews', async (req, res) => {
 
 /**
  * DELETE /api/reviews/:id
- * Remove a review (admin moderation)
+ * Remove a review (admin moderation - Admin Only)
  */
-app.delete('/api/reviews/:id', async (req, res) => {
+app.delete('/api/reviews/:id', requireAdminAuth, async (req, res) => {
   const { id } = req.params;
   await db.deleteReview(id);
   res.json({ success: true, message: 'Review removed successfully.' });
@@ -1458,23 +1633,94 @@ function saveNewServerOrder(order) {
 }
 
 /**
- * GET /api/orders
- * Returns all recorded customer purchases
+ * GET /api/orders/status/:orderRef
+ * Public sanitized status check for customer receipt verification modal
+ * (Only returns status metadata for the queried reference, no PII)
  */
-app.get('/api/orders', async (req, res) => {
+app.get('/api/orders/status/:orderRef', async (req, res) => {
+  const { orderRef } = req.params;
+  if (!orderRef || typeof orderRef !== 'string') {
+    return res.status(400).json({ success: false, message: 'Valid order reference is required' });
+  }
+
+  const cleanRef = orderRef.trim().replace(/^#/, '').toLowerCase();
+  const orders = await db.getOrders();
+  const target = orders.find(o => (o.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase() === cleanRef);
+
+  if (!target) {
+    return res.status(404).json({ success: false, message: 'Order reference not found' });
+  }
+
+  // Return strictly public status metadata - never leak other customer records or address
+  res.json({
+    success: true,
+    orderRef: target.orderRef,
+    status: target.status || 'pending',
+    updatedAt: target.updatedAt || target.createdAt
+  });
+});
+
+/**
+ * GET /api/orders
+ * Returns all recorded customer purchases (Admin Only - Requires Bearer Token)
+ */
+app.get('/api/orders', requireAdminAuth, async (req, res) => {
   const orders = await db.getOrders();
   res.json({ success: true, orders, sqlActive: db.isSqlActive() });
 });
 
 /**
  * POST /api/orders
- * Customer places an order on the website
+ * Customer places an order on the website (Strictly Validated)
  */
 app.post('/api/orders', async (req, res) => {
   const orderData = req.body;
-  if (!orderData || !orderData.orderRef) {
-    return res.status(400).json({ success: false, message: 'Invalid order data' });
+  if (!orderData || !orderData.orderRef || typeof orderData.orderRef !== 'string') {
+    return res.status(400).json({ success: false, message: 'Invalid order reference' });
   }
+
+  // Validate customer information
+  if (!orderData.customer || typeof orderData.customer !== 'object') {
+    return res.status(400).json({ success: false, message: 'Customer information is required' });
+  }
+
+  const cust = orderData.customer;
+  if (!cust.name || typeof cust.name !== 'string' || cust.name.trim().length === 0 || cust.name.length > 150) {
+    return res.status(400).json({ success: false, message: 'Valid customer name is required (max 150 characters)' });
+  }
+  if (!cust.phone || typeof cust.phone !== 'string' || cust.phone.trim().length < 6 || cust.phone.length > 40) {
+    return res.status(400).json({ success: false, message: 'Valid customer phone number is required' });
+  }
+  if (!cust.address || typeof cust.address !== 'string' || cust.address.trim().length === 0 || cust.address.length > 500) {
+    return res.status(400).json({ success: false, message: 'Valid customer delivery address is required (max 500 characters)' });
+  }
+
+  // Validate items list
+  if (!Array.isArray(orderData.items) || orderData.items.length === 0) {
+    return res.status(400).json({ success: false, message: 'Order must contain at least one item' });
+  }
+
+  // Validate receipt payload if present (defense against malicious dataUrl DoS)
+  if (orderData.receiptProof && orderData.receiptProof.dataUrl) {
+    const dataUrl = orderData.receiptProof.dataUrl;
+    if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
+      const isAllowedMime = dataUrl.startsWith('data:image/jpeg') || 
+                            dataUrl.startsWith('data:image/png') || 
+                            dataUrl.startsWith('data:image/webp');
+      if (!isAllowedMime) {
+        return res.status(400).json({ success: false, message: 'Attached receipt must be a JPEG, PNG, or WebP image' });
+      }
+      if (dataUrl.length > 8 * 1024 * 1024) {
+        return res.status(400).json({ success: false, message: 'Receipt upload exceeds maximum 6MB size' });
+      }
+    }
+  }
+
+  // Sanitize monetary totals
+  orderData.subtotal = Math.max(0, Number(orderData.subtotal) || 0);
+  orderData.shippingFee = Math.max(0, Number(orderData.shippingFee) || 0);
+  orderData.discount = Math.max(0, Number(orderData.discount) || 0);
+  orderData.finalTotal = Math.max(0, Number(orderData.finalTotal) || 0);
 
   const saved = await db.saveOrder(orderData);
 
@@ -1699,8 +1945,8 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
   };
 }
 
-// Endpoint to dispatch customer payment confirmation email
-app.post('/api/orders/confirm-payment-email', async (req, res) => {
+// Endpoint to dispatch customer payment confirmation email (Admin Only)
+app.post('/api/orders/confirm-payment-email', requireAdminAuth, async (req, res) => {
   const { orderData } = req.body;
   if (!orderData || !orderData.orderRef) {
     return res.status(400).json({ success: false, message: 'orderData is required' });
@@ -1722,8 +1968,8 @@ app.post('/api/orders/confirm-payment-email', async (req, res) => {
   res.json({ success: true, ...result });
 });
 
-// Update order status (PATCH)
-app.patch('/api/orders/:orderRef/status', async (req, res) => {
+// Update order status (PATCH - Admin Only)
+app.patch('/api/orders/:orderRef/status', requireAdminAuth, async (req, res) => {
   const { orderRef } = req.params;
   const { status, note } = req.body;
 
@@ -1748,8 +1994,8 @@ app.patch('/api/orders/:orderRef/status', async (req, res) => {
   res.json({ success: true, order, message: `Order ${order.orderRef} status updated to ${status}` });
 });
 
-// Also support POST for status update
-app.post('/api/orders/:orderRef/status', async (req, res) => {
+// Also support POST for status update (Admin Only)
+app.post('/api/orders/:orderRef/status', requireAdminAuth, async (req, res) => {
   const { orderRef } = req.params;
   const { status, note } = req.body;
 
@@ -1774,9 +2020,9 @@ app.post('/api/orders/:orderRef/status', async (req, res) => {
 
 /**
  * DELETE /api/orders/:orderRef
- * Remove an order permanently
+ * Remove an order permanently (Admin Only)
  */
-app.delete('/api/orders/:orderRef', async (req, res) => {
+app.delete('/api/orders/:orderRef', requireAdminAuth, async (req, res) => {
   const { orderRef } = req.params;
   await db.deleteOrder(orderRef);
   const remainingOrders = await db.getOrders();
@@ -1795,9 +2041,9 @@ app.get('/api/inventory', async (req, res) => {
 
 /**
  * POST /api/inventory
- * Update stock level and threshold for a product
+ * Update stock level and threshold for a product (Admin Only)
  */
-app.post('/api/inventory', async (req, res) => {
+app.post('/api/inventory', requireAdminAuth, async (req, res) => {
   const { productId, stock, lowStockThreshold } = req.body;
   if (!productId) {
     return res.status(400).json({ success: false, message: 'productId is required' });
@@ -1829,9 +2075,9 @@ app.get('/api/db-status', (req, res) => {
 
 /**
  * GET /api/orders/stats
- * Overview stats of purchases, revenue, and product sales
+ * Overview stats of purchases, revenue, and product sales (Admin Only)
  */
-app.get('/api/orders/stats', async (req, res) => {
+app.get('/api/orders/stats', requireAdminAuth, async (req, res) => {
   const orders = await db.getOrders();
   const inv = await db.getInventory();
 
@@ -1891,6 +2137,7 @@ app.get('/api/orders/stats', async (req, res) => {
 
 // --- STATIC WEBSITE HOSTING WITH BROWSER CACHING ---
 app.use(express.static(__dirname, {
+  dotfiles: 'ignore', // Never serve hidden files (.env, .git)
   maxAge: '7d', // 7 days browser cache for images, CSS, and JS
   etag: true,
   lastModified: true,

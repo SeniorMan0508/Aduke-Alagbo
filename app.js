@@ -1932,16 +1932,14 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
           }
         }
 
-        // 2. Check backend server API
+        // 2. Check backend server API (Sanitized public status endpoint)
         if (!verifiedStatus) {
           try {
-            const res = await fetch(`${getApiBaseUrl()}/api/orders`);
+            const res = await fetch(`${getApiBaseUrl()}/api/orders/status/${encodeURIComponent(targetClean)}`);
             if (res.ok) {
               const data = await res.json();
-              const serverOrders = data.orders || [];
-              const foundServer = serverOrders.find(o => (o.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase() === targetClean);
-              if (foundServer && (foundServer.status === "verified" || foundServer.status === "dispatched" || foundServer.status === "delivered")) {
-                verifiedStatus = foundServer.status;
+              if (data && data.success && (data.status === "verified" || data.status === "dispatched" || data.status === "delivered")) {
+                verifiedStatus = data.status;
               }
             }
           } catch (e) {}

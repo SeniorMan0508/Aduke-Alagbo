@@ -4,10 +4,24 @@ const path = require('path');
 const { ADUKE_LOGO_BASE64 } = require('./logo-asset');
 
 const SMTP_USER = (process.env.SMTP_USER || "badmusdaniel0508@gmail.com").trim();
-const SMTP_PASS = (process.env.SMTP_PASS || "educsevpysrjmcuw").replace(/\s+/g, '');
+const SMTP_PASS = (process.env.SMTP_PASS || "").replace(/\s+/g, '');
 const DEFAULT_OWNER_EMAIL = (process.env.ADMIN_EMAIL || SMTP_USER || "badmusdaniel0508@gmail.com").trim();
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getEmailTransporter() {
+  if (!SMTP_PASS) {
+    console.warn('[SMTP] No SMTP_PASS configured in environment variables');
+    return null;
+  }
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
@@ -76,21 +90,21 @@ exports.handler = async (event, context) => {
     };
   }
 
-  const ownerEmail = orderData.ownerEmail || process.env.ADMIN_EMAIL || DEFAULT_OWNER_EMAIL;
+  const ownerEmail = process.env.ADMIN_EMAIL || DEFAULT_OWNER_EMAIL;
   const customerEmail = (orderData.customer && orderData.customer.email) ? orderData.customer.email.trim() : "";
-  const customerName = (orderData.customer && orderData.customer.name) ? orderData.customer.name : "Valued Customer";
+  const customerName = (orderData.customer && orderData.customer.name) ? escapeHtml(orderData.customer.name) : "Valued Customer";
   const finalTotal = Number(orderData.finalTotal || 0);
 
   const itemsRows = (orderData.items || []).map((it, idx) => `
     <tr>
       <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #1e293b;">
-        <strong>${idx + 1}. ${it.name}</strong>
+        <strong>${idx + 1}. ${escapeHtml(it.name)}</strong>
       </td>
       <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: center; color: #475569;">
-        x${it.quantity}
+        x${Number(it.quantity) || 1}
       </td>
       <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: right; font-weight: 700; color: #18422e;">
-        ₦${Number(it.price * it.quantity).toLocaleString('en-NG')}
+        ₦${Number((it.price || 0) * (it.quantity || 1)).toLocaleString('en-NG')}
       </td>
     </tr>
   `).join('');
@@ -182,13 +196,13 @@ exports.handler = async (event, context) => {
 
           <div style="background: #f8fafc; border-left: 4px solid #18422e; padding: 14px 16px; border-radius: 6px; margin-bottom: 24px;">
             <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Delivery Destination</div>
-            <div style="font-size: 14px; color: #1e293b; font-weight: 600;">${orderData.customer.address}</div>
-            <div style="font-size: 13px; color: #475569; margin-top: 2px;">Phone: <strong>${orderData.customer.phone}</strong></div>
+            <div style="font-size: 14px; color: #1e293b; font-weight: 600;">${escapeHtml(orderData.customer ? orderData.customer.address : '')}</div>
+            <div style="font-size: 13px; color: #475569; margin-top: 2px;">Phone: <strong>${escapeHtml(orderData.customer ? orderData.customer.phone : '')}</strong></div>
           </div>
 
           <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
             <div style="font-size: 13px; color: #92400e; line-height: 1.5;">
-              🚚 <strong>Dispatch Notice:</strong> Our delivery rider will reach out to you via phone/WhatsApp (<strong>${orderData.customer.phone}</strong>) before arrival at your address.
+              🚚 <strong>Dispatch Notice:</strong> Our delivery rider will reach out to you via phone/WhatsApp (<strong>${escapeHtml(orderData.customer ? orderData.customer.phone : '')}</strong>) before arrival at your address.
             </div>
           </div>
 

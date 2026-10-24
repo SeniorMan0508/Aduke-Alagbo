@@ -44,8 +44,9 @@
     .admin-header-nav {
       background: #0d2218;
       color: #ffffff;
-      padding: 1rem 0;
+      padding: 1rem 0; 
       border-bottom: 2px solid var(--accent-gold);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     }
 
     .admin-nav-flex {
@@ -1181,11 +1182,11 @@
           </p>
           <div class="form-group" style="margin-bottom: 0.65rem;">
             <label class="form-label" style="font-size: 0.75rem;" for="emergencyMasterKeyInput">Master Recovery Key *</label>
-            <input type="password" id="emergencyMasterKeyInput" class="form-input" placeholder="Enter aduke2026" required style="font-size: 0.85rem;">
+            <input type="password" id="emergencyMasterKeyInput" class="form-input" placeholder="Enter confidential Master Recovery Key" required style="font-size: 0.85rem;">
           </div>
           <div class="form-group" style="margin-bottom: 0.65rem;">
             <label class="form-label" style="font-size: 0.75rem;" for="emergencyNewPasscodeInput">New Passcode *</label>
-            <input type="password" id="emergencyNewPasscodeInput" class="form-input" placeholder="New passcode (min. 4 characters)" required style="font-size: 0.85rem;">
+            <input type="password" id="emergencyNewPasscodeInput" class="form-input" placeholder="New passcode (min. 8 characters)" required style="font-size: 0.85rem;">
           </div>
           <div id="emergencyResetMsg" style="display: none; padding: 0.4rem 0.6rem; border-radius: var(--radius-sm); font-size: 0.78rem; margin-bottom: 0.65rem;"></div>
           <button type="submit" class="btn-primary" id="submitEmergencyResetBtn" style="width: 100%; justify-content: center; padding: 0.6rem; font-size: 0.85rem; background: #d97706;">
@@ -1243,9 +1244,9 @@
   <div id="adminDashboardApp">
     
     <!-- HEADER -->
-    <header class="admin-header-nav">
+    <header class="admin-header-nav"> 
       <div class="container admin-nav-flex"> 
-        <div class="admin-nav-header-row">
+        <div class="admin-nav-header-row"> 
           <div class="admin-brand-info">
             <img src="./images/bg-image.jpeg" alt="Logo">
             <div>
@@ -1260,12 +1261,12 @@
 
         <div class="admin-nav-tools-row">
           <div id="databaseStatusBadge" class="admin-db-badge" title="Click for Cloud SQL database details">
-            <span>🗄️</span> <span id="databaseStatusText">Database: Checking...</span>
+            <span id="databaseStatusText">Database: Checking...</span>
           </div>
 
           <div class="admin-nav-actions">
             <a href="shop.html" target="_blank" class="admin-shop-link">
-              <span>👁️ View Live Shop</span>
+              <span>View Live Shop</span>
             </a>
           </div>
         </div>

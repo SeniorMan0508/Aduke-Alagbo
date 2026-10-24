@@ -1707,7 +1707,7 @@ app.post('/api/orders/confirm-payment-email', async (req, res) => {
   }
 
   const cleanRef = (orderData.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
-  const orders = getStoredOrders();
+  const orders = await db.getOrders();
   const target = orders.find(o => (o.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase() === cleanRef);
   if (target && target.paymentConfirmedEmailSent) {
     console.log(`[PAYMENT CONFIRM API] Order ${orderData.orderRef} already had confirmation email sent. Skipping duplicate.`);
@@ -1715,7 +1715,7 @@ app.post('/api/orders/confirm-payment-email', async (req, res) => {
   }
   if (target) {
     target.paymentConfirmedEmailSent = true;
-    saveStoredOrders(orders);
+    await db.saveOrder(target);
   }
 
   const result = await sendCustomerPaymentConfirmationEmail(orderData);
@@ -1723,7 +1723,7 @@ app.post('/api/orders/confirm-payment-email', async (req, res) => {
 });
 
 // Update order status (PATCH)
-app.patch('/api/orders/:orderRef/status', (req, res) => {
+app.patch('/api/orders/:orderRef/status', async (req, res) => {
   const { orderRef } = req.params;
   const { status, note } = req.body;
 

@@ -1581,10 +1581,10 @@
           </div>
 
           <!-- Action Footer -->
-          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(24, 66, 46, 0.08); padding-top: 0.85rem; flex-wrap: wrap; gap: 0.75rem;">
+          <div class="order-actions-bar" style="border-top: 1px solid rgba(24, 66, 46, 0.08); padding-top: 0.85rem;">
             <!-- Status quick-changer -->
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted);">Change Status:</span>
+            <div class="order-status-group">
+              <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); white-space: nowrap;">Status:</span>
               <select class="form-input order-status-select" data-ref="${ord.orderRef}" style="padding: 0.35rem 0.65rem; font-size: 0.8rem; width: auto; font-weight: 700;">
                 <option value="pending" ${ord.status === 'pending' ? 'selected' : ''}>🟡 Pending Verification</option>
                 <option value="verified" ${ord.status === 'verified' ? 'selected' : ''}>🟢 Payment Verified</option>
@@ -1601,7 +1601,7 @@
             </div>
 
             <!-- Quick Action buttons -->
-            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <div class="order-btns-group">
               <a href="${waLink}" target="_blank" class="btn-wa-action" title="Open WhatsApp chat with customer">
                 <span>💬 WhatsApp</span>
               </a>

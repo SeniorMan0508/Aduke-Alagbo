@@ -1763,9 +1763,15 @@
     const targetRef = (orderRef || "").toString().trim().replace(/^#/, "").toLowerCase();
     const targetOrder = orders.find(o => (o.orderRef || "").toString().trim().replace(/^#/, "").toLowerCase() === targetRef);
 
-    // If admin confirms payment, automatically dispatch official confirmation email to the buyer
+    // If admin confirms payment, automatically dispatch official confirmation email to the buyer (once)
     if (newStatus === "verified" && targetOrder) {
-      if (targetOrder.customer && targetOrder.customer.email && targetOrder.customer.email.includes("@")) {
+      if (targetOrder.paymentConfirmedEmailSent) {
+        console.log(`[PAYMENT CONFIRMATION] Order ${targetOrder.orderRef} payment confirmation already sent previously.`);
+      } else if (targetOrder.customer && targetOrder.customer.email && targetOrder.customer.email.includes("@")) {
+        targetOrder.paymentConfirmedEmailSent = true;
+        if (typeof saveStoreOrder === "function") {
+          saveStoreOrder(targetOrder);
+        }
         const customerEmail = targetOrder.customer.email.trim();
         fetch(`${getApiBaseUrl()}/api/orders/confirm-payment-email`, {
           method: "POST",
@@ -1777,6 +1783,8 @@
           if (data.sent) {
             console.log("[PAYMENT CONFIRMATION] Customer email delivered:", data);
             showAdminToast(`Payment confirmed! Confirmation email sent to ${customerEmail} ✉️`, "✓");
+          } else if (data.skippedDuplicate) {
+            console.log("[PAYMENT CONFIRMATION] Duplicate skipped cleanly.");
           } else if (data.simulated) {
             console.log("[PAYMENT CONFIRMATION] Simulated delivery:", data);
             showAdminToast(`Payment verified! (Receipt logged to server for ${customerEmail})`, "✓");

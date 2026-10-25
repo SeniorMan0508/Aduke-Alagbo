@@ -156,8 +156,6 @@ Under the **"📊 Product Sales & Stock Tracker"** tab in the Admin backend:
    - **🔴 Out of Stock** (0 bottles remaining).
 4. **1-Click Restocking**:
    - Click the `+` or `−` buttons next to any product or click **"📦 Restock"** to set a new bottle count and restock threshold.
-5. **Testing Feature**:
-   - Click **"🧪 Simulate Customer Purchase"** in the top action bar to test and watch an order arrive live with full audio chime and inventory deduction!
 
 ---
 

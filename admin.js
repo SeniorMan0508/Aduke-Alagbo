@@ -2235,93 +2235,6 @@
     }
   }
 
-  // Simulate an incoming customer purchase (for testing and owner demonstration)
-  async function simulateCustomerPurchase() {
-    const sampleBuyers = [
-      { name: "Mrs. Jumoke Balogun", phone: "+234 803 219 8844", city: "Ikeja, Lagos", address: "14 Isaac John Street, GRA Ikeja" },
-      { name: "Pastor Segun Adeleke", phone: "+234 814 552 1190", city: "Bodija, Ibadan", address: "24 Secretariat Road, Old Bodija" },
-      { name: "Chief Mrs. Ronke Williams", phone: "+234 905 881 2233", city: "Maitama, Abuja", address: "Plot 8, Danube Street, Maitama" },
-      { name: "Engr. Tayo Ogunleye", phone: "+234 802 334 9911", city: "Abeokuta, Ogun", address: "6 Lalubu Street, Oke-Ilewo, Abeokuta" }
-    ];
-
-    const buyer = sampleBuyers[Math.floor(Math.random() * sampleBuyers.length)];
-    const products = (typeof getStoreProducts === "function") ? getStoreProducts() : PRODUCTS_DATA;
-    const randomProduct = products[Math.floor(Math.random() * products.length)] || products[0];
-
-    const randomQty = Math.floor(1 + Math.random() * 2);
-    const subtotal = (randomProduct.price || 6500) * randomQty;
-    const randDigits = Math.floor(10000 + Math.random() * 90000);
-    const orderRef = `#QA-${randDigits}`;
-
-    const newOrder = {
-      orderRef,
-      customer: {
-        name: buyer.name,
-        phone: buyer.phone,
-        email: `${buyer.name.toLowerCase().replace(/[^a-z]/g, '')}@gmail.com`,
-        address: `${buyer.address}, ${buyer.city}`,
-        notes: "Test order generated to verify live website tracking."
-      },
-      senderDetails: {
-        bank: "OPay / Kuda",
-        name: buyer.name,
-        sessionId: `SIM-${Date.now().toString().slice(-8)}`
-      },
-      receiptProof: {
-        hasReceipt: true,
-        fileName: "customer_payment_alert.jpg",
-        dataUrl: randomProduct.image || "images/agbo-jedi.jpg",
-        sessionId: `SIM-${Date.now().toString().slice(-8)}`
-      },
-      items: [
-        {
-          id: randomProduct.id,
-          name: randomProduct.name,
-          price: randomProduct.price,
-          quantity: randomQty,
-          image: randomProduct.image,
-          category: randomProduct.category
-        }
-      ],
-      shippingMethod: "local",
-      shippingFee: 2500,
-      discount: 0,
-      subtotal,
-      finalTotal: subtotal + 2500,
-      paymentMethod: "bank",
-      status: "pending",
-      createdAt: new Date().toISOString(),
-      statusHistory: [
-        { status: "pending", timestamp: new Date().toISOString(), note: "Customer placed order on website" }
-      ]
-    };
-
-    // Save locally
-    if (typeof saveStoreOrder === "function") {
-      saveStoreOrder(newOrder);
-    }
-
-    // Post to server
-    try {
-      await fetch(`${getApiBaseUrl()}/api/orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newOrder, isSync: true, skipEmail: true })
-      });
-    } catch (e) {}
-
-    playOrderChime();
-    showAdminToast(`🔔 New Purchase Arrived! Order ${newOrder.orderRef} by ${newOrder.customer.name} (${formatNaira(newOrder.finalTotal)})`, "🌿");
-
-    renderOrdersTable();
-    renderInventoryTracker();
-    updateStats();
-
-    // Scroll to top of orders table
-    const container = document.getElementById("ordersListContainer");
-    if (container) container.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   // Sync Orders from Server (Authoritative Cross-Device Sync)
   async function syncOrdersFromServer() {
     try {
@@ -2596,19 +2509,11 @@
     if (refreshBtn) {
       refreshBtn.addEventListener("click", async () => {
         refreshBtn.disabled = true;
-        refreshBtn.innerHTML = `<span>⏳ Syncing...</span>`;
+        refreshBtn.innerHTML = `<span>⏳ Refreshing...</span>`;
         await syncOrdersFromServer();
         refreshBtn.disabled = false;
-        refreshBtn.innerHTML = `<span>🔄 Sync Orders Now</span>`;
-        showAdminToast("Order feed synced with server ✓", "🔄");
-      });
-    }
-
-    // Simulate purchase button
-    const simulateBtn = document.getElementById("simulateOrderBtn");
-    if (simulateBtn) {
-      simulateBtn.addEventListener("click", () => {
-        simulateCustomerPurchase();
+        refreshBtn.innerHTML = `<span>🔄 Refresh Orders</span>`;
+        showAdminToast("Order feed refreshed from database ✓", "🔄");
       });
     }
 

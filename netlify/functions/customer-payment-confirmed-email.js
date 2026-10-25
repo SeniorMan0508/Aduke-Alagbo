@@ -89,80 +89,137 @@ exports.handler = async (event, context) => {
     </tr>
   `).join('');
 
-  const status = (body && (body.status || body.type)) || 
-                 (orderData && (orderData.status || orderData.type)) || 
-                 'verified';
+  const rawStatus = (body && body.status) || 
+                    (orderData && orderData.status) || 
+                    (body && body.newStatus) ||
+                    (body && body.type) || 
+                    'verified';
+  const status = String(rawStatus).toLowerCase().trim();
   const note = (body && body.note) || (orderData && orderData.note) || '';
+
+  const isCancelled = ['cancelled', 'canceled', 'cancel'].includes(status);
+  const isDispatched = ['dispatched', 'dispatch', 'in_transit', 'intransit'].includes(status);
+  const isDelivered = ['delivered', 'deliver', 'completed'].includes(status);
 
   const deliveryNote = orderData.shippingMethod === 'nationwide'
     ? 'Interstate Courier (Sorted with dispatch rider)'
     : (orderData.shippingMethod === 'international' ? 'International DHL / FedEx (Sorted with courier)' : `Local Courier (₦${Number(orderData.shippingFee || 0).toLocaleString('en-NG')})`);
 
-  let emailSubject = `Payment Confirmed: Your Aduke Alagbo Order (${orderRef}) is Being Prepared! ✓`;
+  let emailSubject = '';
   let bannerHtml = '';
   let messageHtml = '';
   let badgeHtml = '';
+  let totalsBottomHtml = '';
+  let noticeBoxHtml = '';
 
-  if (status === 'dispatched') {
-    emailSubject = `Dispatched: Your Aduke Alagbo Order (${orderRef}) is on Its Way! 🚚`;
+  if (isCancelled) {
+    emailSubject = `❌ Order Cancelled: Aduke Alagbo Order (${orderRef})`;
     bannerHtml = `
-      <div style="background: #eff6ff; border-bottom: 2px solid #93c5fd; padding: 18px 24px; text-align: center;">
-        <div style="display: inline-block; background: #2563eb; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">🚚</div>
-        <h2 style="margin: 0; font-size: 18px; color: #1e40af; font-weight: 800;">ORDER DISPATCHED &amp; IN TRANSIT</h2>
-        <p style="margin: 4px 0 0 0; font-size: 13px; color: #1d4ed8;">Your herbal remedies are on their way to you!</p>
+      <div style="background: #fef2f2; border-bottom: 2px solid #f87171; padding: 22px 24px; text-align: center;">
+        <div style="display: inline-block; background: #dc2626; color: #ffffff; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; font-size: 20px; font-weight: bold; margin-bottom: 8px;">✕</div>
+        <h2 style="margin: 0; font-size: 19px; color: #991b1b; font-weight: 800; letter-spacing: 0.02em;">ORDER CANCELLED</h2>
+        <p style="margin: 5px 0 0 0; font-size: 13px; color: #b91c1c;">Notice regarding order reference ${orderRef}</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Please be informed that your order <strong>${orderRef}</strong> has been <strong>cancelled</strong> by store administration and will not be prepared or shipped.
+      </p>
+      <div style="background: #fff1f2; border-left: 4px solid #e11d48; padding: 12px 16px; border-radius: 6px; margin: 16px 0;">
+        <div style="font-size: 12px; font-weight: 700; color: #9f1239; text-transform: uppercase;">Reason / Administrative Note</div>
+        <div style="font-size: 14px; color: #881337; margin-top: 4px;">
+          ${note ? escapeHtml(note) : 'Payment was not received / confirmed within the payment window.'}
+        </div>
+      </div>
+      <p style="color: #475569; font-size: 13px; line-height: 1.6;">
+        <strong>Did you already transfer?</strong> If you already made a payment for this order, please message Aduke Alagbo immediately on WhatsApp with your transfer receipt so we can trace your payment and reinstate your order right away!
+      </p>
+    `;
+    badgeHtml = `<span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Cancelled ❌</span>`;
+    totalsBottomHtml = `
+      <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #991b1b;">
+        <span>Order Status:</span>
+        <span style="color: #dc2626;">Cancelled (Not Paid) ❌</span>
+      </div>
+    `;
+    noticeBoxHtml = `
+      <div style="background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
+        <div style="font-size: 13px; color: #991b1b; line-height: 1.5;">
+          💬 <strong>Questions or Need Help?</strong> Click to chat directly with Aduke Alagbo on WhatsApp at 
+          <a href="https://wa.me/2349055126388" style="color: #18422e; font-weight: 800; text-decoration: underline;">+234 905 512 6388</a>.
+        </div>
+      </div>
+    `;
+  } else if (isDispatched) {
+    emailSubject = `🚚 On Its Way: Your Aduke Alagbo Order (${orderRef}) Has Been Dispatched!`;
+    bannerHtml = `
+      <div style="background: #eff6ff; border-bottom: 2px solid #93c5fd; padding: 22px 24px; text-align: center;">
+        <div style="display: inline-block; background: #2563eb; color: #ffffff; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; font-size: 20px; font-weight: bold; margin-bottom: 8px;">🚚</div>
+        <h2 style="margin: 0; font-size: 19px; color: #1e40af; font-weight: 800; letter-spacing: 0.02em;">ORDER DISPATCHED &amp; IN TRANSIT</h2>
+        <p style="margin: 5px 0 0 0; font-size: 13px; color: #1d4ed8;">Your herbal remedies are on their way to you!</p>
       </div>
     `;
     messageHtml = `
       <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
       <p style="color: #475569; font-size: 14px; line-height: 1.6;">
         Great news! Your package for order <strong>${orderRef}</strong> has been carefully prepared and is now dispatched with our courier rider.
-        The delivery rider will call or message you via WhatsApp (${escapeHtml(orderData.customer ? orderData.customer.phone : '')}) before arriving at your address.
+        ${note ? `<br><br><strong>Courier Note:</strong> ${escapeHtml(note)}` : ''}
       </p>
     `;
     badgeHtml = `<span style="background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">In Transit 🚚</span>`;
-  } else if (status === 'delivered') {
-    emailSubject = `Delivered: Your Aduke Alagbo Remedies (${orderRef}) Have Arrived! 🌿`;
+    totalsBottomHtml = `
+      <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #1e40af;">
+        <span>Order Status:</span>
+        <span style="color: #2563eb;">Dispatched &amp; In Transit 🚚</span>
+      </div>
+    `;
+    noticeBoxHtml = `
+      <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
+        <div style="font-size: 13px; color: #1e40af; line-height: 1.5;">
+          🚚 <strong>Rider Arrival Alert:</strong> The delivery rider will call or message your phone/WhatsApp (<strong>${escapeHtml(orderData.customer ? orderData.customer.phone : '')}</strong>) before arriving at your address. Please keep your phone line accessible!
+        </div>
+      </div>
+    `;
+  } else if (isDelivered) {
+    emailSubject = `🌿 Package Delivered: Your Aduke Alagbo Remedies (${orderRef}) Have Arrived!`;
     bannerHtml = `
-      <div style="background: #ecfdf5; border-bottom: 2px solid #6ee7b7; padding: 18px 24px; text-align: center;">
-        <div style="display: inline-block; background: #059669; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">🌿</div>
-        <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PACKAGE DELIVERED SUCCESSFULLY</h2>
-        <p style="margin: 4px 0 0 0; font-size: 13px; color: #047857;">Your remedies have safely arrived at your destination!</p>
+      <div style="background: #ecfdf5; border-bottom: 2px solid #6ee7b7; padding: 22px 24px; text-align: center;">
+        <div style="display: inline-block; background: #059669; color: #ffffff; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; font-size: 20px; font-weight: bold; margin-bottom: 8px;">🌿</div>
+        <h2 style="margin: 0; font-size: 19px; color: #065f46; font-weight: 800; letter-spacing: 0.02em;">PACKAGE DELIVERED SUCCESSFULLY</h2>
+        <p style="margin: 5px 0 0 0; font-size: 13px; color: #047857;">Your remedies have safely arrived at your destination!</p>
       </div>
     `;
     messageHtml = `
       <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
       <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-        Your Aduke Alagbo remedies for order <strong>${orderRef}</strong> have been marked as delivered! Thank you for trusting authentic ancestral African remedies for your health.
-        Please make sure to follow the dosage instructions. If you need any guidance on how to take your herbs, feel free to message Aduke Alagbo on WhatsApp anytime!
+        Your Aduke Alagbo remedies for order <strong>${orderRef}</strong> have been marked as <strong>DELIVERED</strong>! Thank you for trusting authentic ancestral African remedies for your health.
+        ${note ? `<br><br><strong>Delivery Note:</strong> ${escapeHtml(note)}` : ''}
       </p>
     `;
     badgeHtml = `<span style="background: #d1fae5; color: #065f46; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Delivered 🌿</span>`;
-  } else if (status === 'cancelled') {
-    emailSubject = `Order Notice: Aduke Alagbo Order (${orderRef}) Has Been Cancelled ❌`;
-    bannerHtml = `
-      <div style="background: #fef2f2; border-bottom: 2px solid #fca5a5; padding: 18px 24px; text-align: center;">
-        <div style="display: inline-block; background: #dc2626; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✕</div>
-        <h2 style="margin: 0; font-size: 18px; color: #991b1b; font-weight: 800;">ORDER CANCELLED</h2>
-        <p style="margin: 4px 0 0 0; font-size: 13px; color: #b91c1c;">Notice regarding order reference ${orderRef}</p>
+    totalsBottomHtml = `
+      <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #065f46;">
+        <span>Delivery Status:</span>
+        <span style="color: #059669;">Completed &amp; Delivered 🌿</span>
       </div>
     `;
-    messageHtml = `
-      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
-      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-        Please be informed that your order <strong>${orderRef}</strong> has been cancelled by store administration.
-        ${note ? `<br><br><strong>Note / Reason:</strong> ${escapeHtml(note)}` : ''}
-        <br><br>If you have any questions or feel this was in error, please reach out directly to Aduke Alagbo on WhatsApp at <a href="https://wa.me/2349055126388" style="color: #18422e; font-weight: 700;">+234 905 512 6388</a>.
-      </p>
+    noticeBoxHtml = `
+      <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
+        <div style="font-size: 13px; color: #166534; line-height: 1.5;">
+          🌿 <strong>Dosage &amp; Care Guidance:</strong> Shake all herbal liquid preparations gently before drinking. Store in a cool, shaded environment (or refrigerate where indicated). If you need any advice on your dosage schedule, message Aduke Alagbo directly on WhatsApp at 
+          <a href="https://wa.me/2349055126388" style="color: #166534; font-weight: 800; text-decoration: underline;">+234 905 512 6388</a>.
+        </div>
+      </div>
     `;
-    badgeHtml = `<span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Cancelled ❌</span>`;
   } else {
-    // Default: 'verified'
-    emailSubject = `Payment Confirmed: Your Aduke Alagbo Order (${orderRef}) is Being Prepared! ✓`;
+    // Verified (Payment Confirmed)
+    emailSubject = `✓ Payment Confirmed: Your Aduke Alagbo Order (${orderRef}) is Being Prepared!`;
     bannerHtml = `
-      <div style="background: #ecfdf5; border-bottom: 2px solid #86efac; padding: 18px 24px; text-align: center;">
-        <div style="display: inline-block; background: #10b981; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✓</div>
-        <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PAYMENT CONFIRMED &amp; VERIFIED</h2>
-        <p style="margin: 4px 0 0 0; font-size: 13px; color: #047857;">Your bank transfer payment has been confirmed by Aduke Alagbo!</p>
+      <div style="background: #ecfdf5; border-bottom: 2px solid #86efac; padding: 22px 24px; text-align: center;">
+        <div style="display: inline-block; background: #10b981; color: #ffffff; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; font-size: 20px; font-weight: bold; margin-bottom: 8px;">✓</div>
+        <h2 style="margin: 0; font-size: 19px; color: #065f46; font-weight: 800; letter-spacing: 0.02em;">PAYMENT CONFIRMED &amp; VERIFIED</h2>
+        <p style="margin: 5px 0 0 0; font-size: 13px; color: #047857;">Your bank transfer payment has been confirmed by Aduke Alagbo!</p>
       </div>
     `;
     messageHtml = `
@@ -170,9 +227,23 @@ exports.handler = async (event, context) => {
       <p style="color: #475569; font-size: 14px; line-height: 1.6;">
         Good news! Aduke Alagbo has personally verified your bank transfer payment of <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
         Your fresh ancestral herbal remedies are now being prepared, packaged with care, and scheduled for dispatch.
+        ${note ? `<br><br><strong>Note:</strong> ${escapeHtml(note)}` : ''}
       </p>
     `;
     badgeHtml = `<span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>`;
+    totalsBottomHtml = `
+      <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #18422e;">
+        <span>Total Confirmed Paid:</span>
+        <span style="color: #15803d;">₦${finalTotal.toLocaleString('en-NG')} ✓</span>
+      </div>
+    `;
+    noticeBoxHtml = `
+      <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
+        <div style="font-size: 13px; color: #92400e; line-height: 1.5;">
+          🌿 <strong>Fresh Preparation Notice:</strong> Your authentic remedies are being freshly compounded and packaged with care. You will receive another notification once your package is dispatched with our courier rider!
+        </div>
+      </div>
+    `;
   }
 
   const htmlContent = `
@@ -233,10 +304,7 @@ exports.handler = async (event, context) => {
             <span>-₦${Number(orderData.discount).toLocaleString('en-NG')}</span>
           </div>` : ''}
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 10px 0;">
-          <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; color: #18422e;">
-            <span>Total Confirmed Paid:</span>
-            <span style="color: #15803d;">₦${finalTotal.toLocaleString('en-NG')} ✓</span>
-          </div>
+          ${totalsBottomHtml}
         </div>
 
         <!-- Delivery Address Details -->
@@ -247,15 +315,11 @@ exports.handler = async (event, context) => {
           ${orderData.customer && orderData.customer.notes ? `<div style="font-size: 12px; color: #64748b; margin-top: 4px;"><em>Note: ${escapeHtml(orderData.customer.notes)}</em></div>` : ''}
         </div>
 
-        <!-- Dispatch Notice -->
-        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
-          <div style="font-size: 13px; color: #92400e; line-height: 1.5;">
-            🚚 <strong>Dispatch Notice:</strong> Our delivery rider will reach out to you via phone/WhatsApp (<strong>${escapeHtml(orderData.customer ? orderData.customer.phone : '')}</strong>) before arrival at your address.
-          </div>
-        </div>
+        <!-- Status Notice Box -->
+        ${noticeBoxHtml}
 
         <p style="font-size: 13px; color: #475569; line-height: 1.5; margin-bottom: 20px;">
-          If you have any questions about your dosage or package tracking, you can message Aduke Alagbo directly on WhatsApp at 
+          If you have any questions about your remedies or tracking, you can message Aduke Alagbo directly on WhatsApp at 
           <a href="https://wa.me/2349055126388" style="color: #18422e; font-weight: 700; text-decoration: underline;">+234 905 512 6388</a>.
         </p>
 

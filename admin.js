@@ -2106,8 +2106,10 @@
 
   // Update order status and sync to server & local
   async function updateOrderStatus(orderRef, newStatus, note = "") {
+    const normalizedStatus = (newStatus || "").toString().toLowerCase().trim();
+
     if (typeof updateStoreOrderStatus === "function") {
-      updateStoreOrderStatus(orderRef, newStatus, note);
+      updateStoreOrderStatus(orderRef, normalizedStatus, note);
     }
 
     const orders = typeof getStoreOrders === "function" ? getStoreOrders() : [];
@@ -2115,16 +2117,16 @@
     const targetOrder = orders.find(o => (o.orderRef || "").toString().trim().replace(/^#/, "").toLowerCase() === targetRef);
 
     // Automatically dispatch customer email notifications on verified, dispatched, delivered, and cancelled
-    const customerNotificationStatuses = ["verified", "dispatched", "delivered", "cancelled"];
-    if (customerNotificationStatuses.includes(newStatus) && targetOrder) {
+    const customerNotificationStatuses = ["verified", "dispatched", "delivered", "cancelled", "canceled"];
+    if (customerNotificationStatuses.includes(normalizedStatus) && targetOrder) {
       if (targetOrder.customer && targetOrder.customer.email && targetOrder.customer.email.includes("@")) {
         const customerEmail = targetOrder.customer.email.trim();
         const netlifyDirectUrl = "https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email";
 
         const emailPayload = {
-          status: newStatus,
+          status: normalizedStatus,
           note: note || "",
-          orderData: { ...targetOrder, status: newStatus, note: note || "" }
+          orderData: { ...targetOrder, status: normalizedStatus, note: note || "" }
         };
 
         // Dispatch via Server (authenticated) with immediate Netlify fallback
@@ -2133,7 +2135,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(emailPayload)
         }).then(res => res.json()).catch(err => {
-          console.warn(`[ORDER EMAIL] Server dispatch attempt (${newStatus}):`, err.message);
+          console.warn(`[ORDER EMAIL] Server dispatch attempt (${normalizedStatus}):`, err.message);
           return null;
         });
 
@@ -2142,7 +2144,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(emailPayload)
         }).then(res => res.json()).catch(err => {
-          console.warn(`[ORDER EMAIL] Direct Netlify attempt (${newStatus}):`, err.message);
+          console.warn(`[ORDER EMAIL] Direct Netlify attempt (${normalizedStatus}):`, err.message);
           return null;
         });
 
@@ -2150,12 +2152,13 @@
           verified: `Payment confirmed! Confirmation email sent to ${customerEmail} ✉️`,
           dispatched: `Order dispatched! Dispatch email sent to ${customerEmail} 🚚`,
           delivered: `Order delivered! Delivery email sent to ${customerEmail} 🌿`,
-          cancelled: `Order cancelled! Cancellation email sent to ${customerEmail} ❌`
+          cancelled: `Order cancelled! Cancellation email sent to ${customerEmail} ❌`,
+          canceled: `Order cancelled! Cancellation email sent to ${customerEmail} ❌`
         };
-        const toastMsg = friendlyMessages[newStatus] || `Status updated to ${newStatus}! Email sent to ${customerEmail}`;
+        const toastMsg = friendlyMessages[normalizedStatus] || `Status updated to ${normalizedStatus}! Email sent to ${customerEmail}`;
 
         Promise.race([dispatchServer, dispatchNetlify]).then(() => {
-          if (newStatus === "verified") {
+          if (normalizedStatus === "verified") {
             targetOrder.paymentConfirmedEmailSent = true;
           }
           if (typeof saveStoreOrder === "function") {
@@ -2163,10 +2166,10 @@
           }
           showAdminToast(toastMsg, "✓");
         }).catch(() => {
-          showAdminToast(`Status updated to ${newStatus}! (Email dispatched for ${customerEmail})`, "✓");
+          showAdminToast(`Status updated to ${normalizedStatus}! (Email dispatched for ${customerEmail})`, "✓");
         });
       } else {
-        showAdminToast(`Order updated to ${newStatus}! ⚠️ Note: Customer did not provide an email address.`, "ℹ️");
+        showAdminToast(`Order updated to ${normalizedStatus}! ⚠️ Note: Customer did not provide an email address.`, "ℹ️");
       }
     }
 
@@ -2176,7 +2179,7 @@
       await authFetch(`${getApiBaseUrl()}/api/orders/${encodeURIComponent(cleanRef)}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus, note })
+        body: JSON.stringify({ status: normalizedStatus, note })
       });
     } catch (e) {
       console.warn("Backend status sync warning:", e);

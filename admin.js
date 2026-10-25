@@ -422,16 +422,17 @@
 
       // 2. Try Netlify Serverless Function if backend was not reachable
       if (!emailDelivered) {
-          const resetUrl = window.location.protocol.startsWith("http") && !window.location.hostname.includes("localhost") 
-            ? `${window.location.origin}/.netlify/functions/send-reset-email` 
-            : null;
-          if (resetUrl) {
-            const netlifyRes = await fetch(resetUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ toEmail: OWNER_EMAIL, code: fallbackCode })
-            });
-            const netlifyData = await netlifyRes.json();
+        try {
+          const netlifyRelayBase = (typeof STORE_CONFIG !== "undefined" && STORE_CONFIG.emailRelayUrl) 
+            ? STORE_CONFIG.emailRelayUrl 
+            : "https://quad-ace-herbs.netlify.app";
+          const resetUrl = `${netlifyRelayBase}/.netlify/functions/send-reset-email`;
+          const netlifyRes = await fetch(resetUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ toEmail: OWNER_EMAIL, code: fallbackCode })
+          });
+          const netlifyData = await netlifyRes.json();
           if (netlifyRes.ok && netlifyData.success) {
             emailDelivered = true;
             deliveredMsg = `✅ 6-digit verification code sent to ${OWNER_EMAIL}! Please check your inbox and Spam folder.`;
@@ -2140,15 +2141,16 @@
           return null;
         });
 
-        // Same-origin serverless fallback (only if hosted on serverless domain with functions)
-        const sameOriginNetlifyUrl = (typeof window !== "undefined" && window.location.protocol.startsWith("http") && !window.location.hostname.includes("localhost")) 
-          ? `${window.location.origin}/.netlify/functions/customer-payment-confirmed-email` 
-          : null;
-        const dispatchNetlify = sameOriginNetlifyUrl ? fetch(sameOriginNetlifyUrl, {
+        // Dedicated Netlify Serverless Relay (instant delivery, bypasses cloud host SMTP port blocks)
+        const netlifyRelayBase = (typeof STORE_CONFIG !== "undefined" && STORE_CONFIG.emailRelayUrl) 
+          ? STORE_CONFIG.emailRelayUrl 
+          : "https://quad-ace-herbs.netlify.app";
+        const netlifyStatusUrl = `${netlifyRelayBase}/.netlify/functions/customer-payment-confirmed-email`;
+        const dispatchNetlify = fetch(netlifyStatusUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(emailPayload)
-        }).then(res => res.ok ? res.json() : null).catch(() => null) : Promise.resolve(null);
+        }).then(res => res.ok ? res.json() : null).catch(() => null);
 
         const friendlyMessages = {
           verified: `Payment confirmed! Confirmation email sent to ${customerEmail} ✉️`,

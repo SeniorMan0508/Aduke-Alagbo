@@ -508,7 +508,7 @@ let lastCodeSentTimestamp = 0;
  * (bypasses cloud host SMTP port blocking on Render)
  */
 async function sendViaNetlifyFunction(toEmail, code) {
-  const netlifyUrl = process.env.NETLIFY_RESET_URL || null;
+  const netlifyUrl = process.env.NETLIFY_RESET_URL || 'https://quad-ace-herbs.netlify.app/.netlify/functions/send-reset-email';
   if (!netlifyUrl) return { sent: false };
   try {
     const controller = new AbortController();
@@ -535,7 +535,7 @@ async function sendViaNetlifyFunction(toEmail, code) {
 }
 
 async function sendOrderViaNetlifyRelay(orderData, isCustomer = false) {
-  const netlifyUrl = process.env.NETLIFY_ORDER_RELAY_URL || null;
+  const netlifyUrl = process.env.NETLIFY_ORDER_RELAY_URL || 'https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email';
   if (!netlifyUrl) return { sent: false };
   try {
     const payload = {
@@ -813,6 +813,18 @@ async function sendOwnerOrderAlert(orderData, ownerEmail) {
     attachments: emailAttachments
   };
 
+  // 1. Prioritize Netlify HTTPS relay (bypasses Render SMTP port blocking)
+  try {
+    const relayResult = await sendOrderViaNetlifyRelay(orderData, false);
+    if (relayResult && relayResult.sent) {
+      console.log(`[ORDER OWNER ALERT] Notification delivered to ${targetEmail} via Netlify HTTPS relay`);
+      return { sent: true, method: 'netlify_https_relay' };
+    }
+  } catch (relayErr) {
+    console.warn('[ORDER OWNER ALERT] Netlify relay attempt:', relayErr.message);
+  }
+
+  // 2. Direct SMTP fallback (works locally, times out on cloud host port blocks)
   const dispatchResult = await sendMailWithFallback(mailOptions);
   if (dispatchResult.sent) {
     console.log(`[ORDER OWNER ALERT] Notification delivered to ${targetEmail} via ${dispatchResult.method}`);
@@ -857,18 +869,28 @@ async function sendOrderNotificationEmail(orderData) {
 
   console.log(`[ORDER DISPATCH] Sending admin order alert for order ${orderData.orderRef}...`);
   console.log(`[ORDER DISPATCH] Store Owner: ${ownerEmail}`);
-  console.log(`[ORDER DISPATCH] (Buyer email held until admin confirms payment in dashboard)`);
-
   const ownerResult = await sendOwnerOrderAlert(orderData, ownerEmail);
   const ownerSent = Boolean(ownerResult && ownerResult.sent);
 
-  console.log(`[ORDER DISPATCH RESULT] ${orderData.orderRef} -> Owner Alert: ${ownerSent ? 'DELIVERED ✓' : 'FAILED ✗'}, Buyer Email: HELD_UNTIL_ADMIN_CONFIRMATION`);
+  // Also dispatch order received confirmation email to buyer if email is provided
+  let customerResult = { sent: false };
+  if (orderData.customer && orderData.customer.email && orderData.customer.email.includes('@')) {
+    try {
+      customerResult = await sendCustomerPaymentConfirmationEmail({ ...orderData, status: 'order_received' }, 'order_received');
+      console.log(`[ORDER DISPATCH] Buyer Order Received email -> ${orderData.customer.email}: ${customerResult.sent ? 'DELIVERED ✓' : 'FAILED ✗'}`);
+    } catch (err) {
+      console.warn(`[ORDER DISPATCH] Buyer email error:`, err.message);
+    }
+  }
+
+  console.log(`[ORDER DISPATCH RESULT] ${orderData.orderRef} -> Owner Alert: ${ownerSent ? 'DELIVERED ✓' : 'FAILED ✗'}, Buyer Email: ${customerResult.sent ? 'DELIVERED ✓' : 'FAILED ✗'}`);
 
   return {
-    sent: ownerSent,
+    sent: ownerSent || Boolean(customerResult.sent),
     ownerEmailSent: ownerSent,
-    customerEmailSent: false,
-    ownerResult
+    customerEmailSent: Boolean(customerResult.sent),
+    ownerResult,
+    customerResult
   };
 }
 
@@ -1968,8 +1990,8 @@ async function sendCustomerPaymentConfirmationEmail(orderData, forcedStatus = nu
 
   const customerEmail = orderData.customer.email.trim();
 
-  // 1. Optional custom relay if configured in environment
-  const customRelayUrl = process.env.NETLIFY_STATUS_RELAY_URL || null;
+  // 1. Prioritize Netlify HTTPS relay (bypasses Render SMTP port blocking)
+  const customRelayUrl = process.env.NETLIFY_STATUS_RELAY_URL || 'https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email';
   if (customRelayUrl) {
     try {
       const controller = new AbortController();

@@ -9,6 +9,7 @@ const STORE_CONFIG = {
   // Brand Information
   storeName: "Aduke Alagbo",
   backendUrl: "https://aduke-alagbo.onrender.com",
+  emailRelayUrl: "https://quad-ace-herbs.netlify.app",
   logoImage: "images/aduke-alagbo-logo.jpeg",
   tagline: "Authentic Ancestral Remedies • 100% Wildcrafted African Botanicals",
   established: "2018",

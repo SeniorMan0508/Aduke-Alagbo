@@ -1663,11 +1663,12 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     // Launch backend sync (retries in background if server is cold-starting)
     syncOrderToBackend(orderData);
 
-    // DISPATCH NEW ORDER NOTIFICATION EMAIL TO STORE OWNER
+    // DISPATCH NEW ORDER NOTIFICATION EMAIL TO STORE OWNER & BUYER RECEIPT
+    const netlifyRelayBase = (typeof STORE_CONFIG !== "undefined" && STORE_CONFIG.emailRelayUrl) 
+      ? STORE_CONFIG.emailRelayUrl 
+      : "https://quad-ace-herbs.netlify.app";
     const emailEndpoint = `${getApiBaseUrl()}/api/orders/notify-email`;
-    const netlifyDirectUrl = (typeof window !== "undefined" && window.location.protocol.startsWith("http") && !window.location.hostname.includes("localhost")) 
-      ? `${window.location.origin}/.netlify/functions/notify-email` 
-      : null;
+    const netlifyDirectUrl = `${netlifyRelayBase}/.netlify/functions/notify-email`;
 
     fetch(emailEndpoint, {
       method: "POST",
@@ -1677,7 +1678,7 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     .then(res => res.json())
     .then(data => {
       console.log("[ORDER NOTIFICATION] Branded order email sent:", data);
-      if (!data.success) {
+      if (!data.success || (data.result && !data.result.sent)) {
         fetch(netlifyDirectUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1694,6 +1695,23 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
         body: JSON.stringify(orderData)
       }).catch(e => console.warn("[ORDER NOTIFICATION] Netlify fallback:", e));
     });
+
+    // DISPATCH BUYER ORDER & PAYMENT RECEIVED CONFIRMATION EMAIL
+    if (orderData.customer && orderData.customer.email && orderData.customer.email.includes("@")) {
+      const netlifyCustomerUrl = `${netlifyRelayBase}/.netlify/functions/customer-payment-confirmed-email`;
+      fetch(netlifyCustomerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "order_received",
+          type: "order_received",
+          orderData: { ...orderData, status: "order_received" }
+        })
+      })
+      .then(res => res.json())
+      .then(d => console.log("[BUYER EMAIL] Receipt email sent to buyer:", d))
+      .catch(e => console.warn("[BUYER EMAIL] Receipt email failed:", e));
+    }
 
     // Close Checkout Modal & Open Receipt
     closeCheckoutModal();

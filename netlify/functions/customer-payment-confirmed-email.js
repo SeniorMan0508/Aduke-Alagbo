@@ -100,6 +100,7 @@ exports.handler = async (event, context) => {
   const isCancelled = ['cancelled', 'canceled', 'cancel'].includes(status);
   const isDispatched = ['dispatched', 'dispatch', 'in_transit', 'intransit'].includes(status);
   const isDelivered = ['delivered', 'deliver', 'completed'].includes(status);
+  const isOrderReceived = ['order_received', 'received', 'pending', 'order_placed', 'checkout'].includes(status);
 
   const deliveryNote = orderData.shippingMethod === 'nationwide'
     ? 'Interstate Courier (Sorted with dispatch rider)'
@@ -209,6 +210,38 @@ exports.handler = async (event, context) => {
         <div style="font-size: 13px; color: #166534; line-height: 1.5;">
           🌿 <strong>Dosage &amp; Care Guidance:</strong> Shake all herbal liquid preparations gently before drinking. Store in a cool, shaded environment (or refrigerate where indicated). If you need any advice on your dosage schedule, message Aduke Alagbo directly on WhatsApp at 
           <a href="https://wa.me/2349055126388" style="color: #166534; font-weight: 800; text-decoration: underline;">+234 905 512 6388</a>.
+        </div>
+      </div>
+    `;
+  } else if (isOrderReceived) {
+    // Order Received (Buyer Checkout Receipt)
+    emailSubject = `🧾 Order & Payment Proof Received: Aduke Alagbo Order (${orderRef})`;
+    bannerHtml = `
+      <div style="background: #fefce8; border-bottom: 2px solid #fef08a; padding: 22px 24px; text-align: center;">
+        <div style="display: inline-block; background: #eab308; color: #ffffff; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; font-size: 20px; font-weight: bold; margin-bottom: 8px;">🧾</div>
+        <h2 style="margin: 0; font-size: 19px; color: #854d0e; font-weight: 800; letter-spacing: 0.02em;">ORDER &amp; PAYMENT PROOF RECEIVED</h2>
+        <p style="margin: 5px 0 0 0; font-size: 13px; color: #a16207;">Thank you! Your order has been placed and payment proof received.</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Thank you for shopping with <strong>Aduke Alagbo</strong>! We have successfully received your order <strong>${orderRef}</strong> and payment proof for <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
+        Our team is verifying your bank transfer alert. Once verified, you will receive an official payment confirmation and dispatch tracking update!
+      </p>
+    `;
+    badgeHtml = `<span style="background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Awaiting Verification ⏳</span>`;
+    totalsBottomHtml = `
+      <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #854d0e;">
+        <span>Payment Status:</span>
+        <span style="color: #a16207;">Proof Received (Awaiting Verification) ⏳</span>
+      </div>
+    `;
+    noticeBoxHtml = `
+      <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
+        <div style="font-size: 13px; color: #92400e; line-height: 1.5;">
+          🌿 <strong>What Happens Next:</strong> We will cross-check your bank transfer alert and begin freshly preparing your natural herbal remedies. If you have any urgent inquiry or need to share receipt screenshot, message Aduke Alagbo directly on WhatsApp at 
+          <a href="https://wa.me/2349055126388" style="color: #854d0e; font-weight: 800; text-decoration: underline;">+234 905 512 6388</a>.
         </div>
       </div>
     `;

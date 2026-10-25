@@ -42,7 +42,7 @@
   const TOKEN_KEY = "quadace_admin_token";
 
   function getStoredToken() {
-    return sessionStorage.getItem(TOKEN_KEY) || "";
+    return sessionStorage.getItem(TOKEN_KEY) || sessionStorage.getItem("aduke_admin_token") || "";
   }
 
   function getFallbackPasscode() {
@@ -93,6 +93,17 @@
     return fetch(url, { ...options, headers }).then(res => {
       if (res.status === 401) {
         console.warn("[ADMIN AUTH] Unauthorized response received (401). Session may be invalid or expired.");
+        sessionStorage.removeItem(TOKEN_KEY);
+        sessionStorage.removeItem("aduke_admin_token");
+        const gatekeeper = document.getElementById("adminGatekeeper");
+        if (gatekeeper) {
+          gatekeeper.style.display = "flex";
+          const errEl = document.getElementById("gatekeeperError");
+          if (errEl) {
+            errEl.style.display = "block";
+            errEl.textContent = "Your session expired after the server update. Please enter your passcode to reconnect.";
+          }
+        }
       }
       return res;
     });
@@ -102,8 +113,9 @@
   function checkAuth() {
     const gatekeeper = document.getElementById("adminGatekeeper");
     const isAuthenticated = sessionStorage.getItem(AUTH_KEY) === "true";
+    const token = getStoredToken();
 
-    if (isAuthenticated) {
+    if (isAuthenticated && token) {
       if (gatekeeper) gatekeeper.style.display = "none";
       loadDashboard();
     } else {
@@ -2096,33 +2108,25 @@
           saveStoreOrder(targetOrder);
         }
         const customerEmail = targetOrder.customer.email.trim();
-        fetch(`${getApiBaseUrl()}/api/orders/confirm-payment-email`, {
+        authFetch(`${getApiBaseUrl()}/api/orders/confirm-payment-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orderData: targetOrder })
         })
         .then(res => res.json())
         .then(data => {
-          if (data.sent) {
+          if (data && data.sent) {
             console.log("[PAYMENT CONFIRMATION] Customer email delivered:", data);
             showAdminToast(`Payment confirmed! Confirmation email sent to ${customerEmail} ✉️`, "✓");
-          } else if (data.skippedDuplicate) {
+          } else if (data && data.skippedDuplicate) {
             console.log("[PAYMENT CONFIRMATION] Duplicate skipped cleanly.");
-          } else if (data.simulated) {
+          } else if (data && data.simulated) {
             console.log("[PAYMENT CONFIRMATION] Simulated delivery:", data);
             showAdminToast(`Payment verified! (Receipt logged to server for ${customerEmail})`, "✓");
-          } else {
-            showAdminToast(`Payment verified! Email notice: ${data.message || 'Queued'}`, "ℹ️");
           }
         })
         .catch(err => {
-          console.warn("[PAYMENT CONFIRMATION] Primary email call failed, trying direct HTTPS fallback:", err);
-          fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderData: targetOrder })
-          }).catch(e => console.warn("[PAYMENT CONFIRMATION] Direct fallback:", e));
-          showAdminToast(`Payment verified! (Confirmation email sent to ${customerEmail})`, "✓");
+          console.warn("[PAYMENT CONFIRMATION] Email dispatch attempted via server:", err.message);
         });
       } else {
         showAdminToast(`Payment verified! ⚠️ Note: Customer did not provide an email address for receipt delivery.`, "ℹ️");

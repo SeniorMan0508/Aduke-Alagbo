@@ -117,24 +117,93 @@ function verifySecret(secret, storedHash) {
   return crypto.timingSafeEqual(Buffer.from(hash, 'utf-8'), Buffer.from(key, 'utf-8'));
 }
 
-// Active session tokens (token -> expiry timestamp)
-const activeSessions = new Map();
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+// Persistent & HMAC-Signed Session Tokens (Survives Render restarts & redeploys)
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days active session
+
+function getSessionSecret() {
+  const auth = getAuthData();
+  return (auth && auth.passwordHash) ? auth.passwordHash : (process.env.ADMIN_MASTER_KEY || "aduke-alagbo-session-hmac-key");
+}
+
+function loadSessions() {
+  const map = new Map();
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+      const now = Date.now();
+      for (const [t, exp] of Object.entries(data)) {
+        if (typeof exp === 'number' && exp > now) {
+          map.set(t, exp);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[SESSIONS] Load error:', e.message);
+  }
+  return map;
+}
+
+function saveSessions(map) {
+  try {
+    const obj = {};
+    for (const [t, exp] of map.entries()) {
+      obj[t] = exp;
+    }
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(obj, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[SESSIONS] Save error:', e.message);
+  }
+}
+
+const activeSessions = loadSessions();
 
 function createSession() {
-  const token = crypto.randomBytes(32).toString('hex');
-  activeSessions.set(token, Date.now() + SESSION_TTL_MS);
+  const randomPart = crypto.randomBytes(24).toString('hex');
+  const expiry = Date.now() + SESSION_TTL_MS;
+  const data = `${randomPart}.${expiry}`;
+  const sig = crypto.createHmac('sha256', getSessionSecret()).update(data).digest('hex');
+  const token = `${data}.${sig}`;
+
+  activeSessions.set(token, expiry);
+  saveSessions(activeSessions);
   return token;
 }
 
 function isValidSession(token) {
-  if (!token || !activeSessions.has(token)) return false;
-  const expiry = activeSessions.get(token);
-  if (Date.now() > expiry) {
-    activeSessions.delete(token);
-    return false;
+  if (!token || typeof token !== 'string') return false;
+
+  // 1. Check in-memory map
+  if (activeSessions.has(token)) {
+    const expiry = activeSessions.get(token);
+    if (Date.now() > expiry) {
+      activeSessions.delete(token);
+      saveSessions(activeSessions);
+      return false;
+    }
+    return true;
   }
-  return true;
+
+  // 2. Stateless HMAC verification (survives any Render redeploy or restart!)
+  const parts = token.split('.');
+  if (parts.length === 3) {
+    const [randomPart, expiryStr, clientSig] = parts;
+    const expiry = Number(expiryStr);
+    if (isNaN(expiry) || Date.now() > expiry) {
+      return false;
+    }
+    const data = `${randomPart}.${expiry}`;
+    const expectedSig = crypto.createHmac('sha256', getSessionSecret()).update(data).digest('hex');
+    try {
+      if (crypto.timingSafeEqual(Buffer.from(clientSig, 'utf8'), Buffer.from(expectedSig, 'utf8'))) {
+        activeSessions.set(token, expiry);
+        saveSessions(activeSessions);
+        return true;
+      }
+    } catch (e) {}
+  }
+
+  return false;
 }
 
 // --- AUTHORIZATION MIDDLEWARE FOR ADMIN ENDPOINTS ---

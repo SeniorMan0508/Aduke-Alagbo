@@ -1926,28 +1926,41 @@ app.post('/api/orders', async (req, res) => {
   res.json({ success: true, order: saved, message: `Order ${orderData.orderRef} placed and recorded successfully!` });
 });
 
-// In-memory deduplication map for buyer payment confirmations (dedupeKey -> timestamp)
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// In-memory deduplication map for buyer status emails (dedupeKey -> timestamp)
 const recentlyConfirmedPayments = new Map();
 
-// Helper to dispatch confirmation email to customer (supports both Order Received & Payment Verified)
-async function sendCustomerPaymentConfirmationEmail(orderData) {
+// Helper to dispatch confirmation/status update email to customer
+async function sendCustomerPaymentConfirmationEmail(orderData, forcedStatus = null, forcedNote = null) {
   if (!orderData || !orderData.customer || !orderData.customer.email) {
     return { sent: false, message: 'No customer email provided for this order' };
   }
 
   const cleanRef = (orderData.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
+  const status = forcedStatus || orderData.status || 'verified';
+  const note = forcedNote || orderData.note || '';
+  const dedupKey = `${cleanRef}:${status}`;
   const now = Date.now();
 
-  // Deduplication guard: ignore duplicate calls for the same order within 15 seconds
-  if (cleanRef && recentlyConfirmedPayments.has(cleanRef)) {
-    const lastSent = recentlyConfirmedPayments.get(cleanRef);
+  // Deduplication guard: ignore duplicate calls for the same order and status within 15 seconds
+  if (cleanRef && recentlyConfirmedPayments.has(dedupKey)) {
+    const lastSent = recentlyConfirmedPayments.get(dedupKey);
     if (now - lastSent < 15000) {
-      console.log(`[CUSTOMER CONFIRM EMAIL] Payment confirmation for ${orderData.orderRef} already sent within last 15s. Skipping duplicate.`);
-      return { sent: true, skippedDuplicate: true, orderRef: orderData.orderRef };
+      console.log(`[CUSTOMER STATUS EMAIL] Status (${status}) for ${orderData.orderRef} already sent within last 15s. Skipping duplicate.`);
+      return { sent: true, skippedDuplicate: true, orderRef: orderData.orderRef, status };
     }
   }
   if (cleanRef) {
-    recentlyConfirmedPayments.set(cleanRef, now);
+    recentlyConfirmedPayments.set(dedupKey, now);
   }
 
   const customerEmail = orderData.customer.email.trim();
@@ -1961,29 +1974,31 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        orderData: { ...orderData, type: 'payment_confirmed' } 
+        orderData: { ...orderData, status },
+        status,
+        note
       }),
       signal: controller.signal
     });
     clearTimeout(timer);
     const relayData = await relayRes.json();
     if (relayRes.ok && relayData.success) {
-      console.log(`[CUSTOMER CONFIRM EMAIL] Delivered to ${customerEmail} via Netlify HTTPS relay`);
-      return { sent: true, method: 'netlify_https_relay' };
+      console.log(`[CUSTOMER STATUS EMAIL] Delivered (${status}) to ${customerEmail} via Netlify HTTPS relay`);
+      return { sent: true, method: 'netlify_https_relay', status };
     }
   } catch (err) {
-    console.warn(`[CUSTOMER CONFIRM EMAIL] Netlify relay attempt:`, err.message);
+    console.warn(`[CUSTOMER STATUS EMAIL] Netlify relay attempt:`, err.message);
   }
 
   const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
   const hasLogo = fs.existsSync(LOGO_PATH);
-  const customerName = orderData.customer.name || 'Valued Customer';
+  const customerName = orderData.customer.name ? escapeHtml(orderData.customer.name) : 'Valued Customer';
   const finalTotal = Number(orderData.finalTotal || 0);
 
   const itemsRows = (orderData.items || []).map((it, idx) => `
     <tr>
       <td style="padding: 12px 14px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #1e293b;">
-        <strong>${idx + 1}. ${it.name}</strong>
+        <strong>${idx + 1}. ${escapeHtml(it.name)}</strong>
       </td>
       <td style="padding: 12px 14px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: center; color: #475569;">
         x${it.quantity}
@@ -1998,23 +2013,82 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
     ? 'Interstate Courier (Sorted with dispatch rider)'
     : (orderData.shippingMethod === 'international' ? 'International DHL / FedEx (Sorted with courier)' : `Local Courier (₦${Number(orderData.shippingFee || 0).toLocaleString('en-NG')})`);
 
-  const bannerHtml = `
-    <div style="background: #ecfdf5; border-bottom: 2px solid #86efac; padding: 18px 24px; text-align: center;">
-      <div style="display: inline-block; background: #10b981; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✓</div>
-      <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PAYMENT CONFIRMED &amp; VERIFIED</h2>
-      <p style="margin: 4px 0 0 0; font-size: 13px; color: #047857;">Your bank transfer payment has been confirmed by Aduke Alagbo!</p>
-    </div>
-  `;
+  let emailSubject = `Payment Confirmed: Your Aduke Alagbo Order (${orderData.orderRef}) is Being Prepared! ✓`;
+  let bannerHtml = '';
+  let messageHtml = '';
+  let badgeHtml = '';
 
-  const messageHtml = `
-    <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
-    <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-      Good news! Aduke Alagbo has personally verified your bank transfer payment of <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
-      Your fresh ancestral herbal remedies are now being prepared, packaged with care, and scheduled for dispatch.
-    </p>
-  `;
-
-  const badgeHtml = `<span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>`;
+  if (status === 'dispatched') {
+    emailSubject = `Dispatched: Your Aduke Alagbo Order (${orderData.orderRef}) is on Its Way! 🚚`;
+    bannerHtml = `
+      <div style="background: #eff6ff; border-bottom: 2px solid #93c5fd; padding: 18px 24px; text-align: center;">
+        <div style="display: inline-block; background: #2563eb; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">🚚</div>
+        <h2 style="margin: 0; font-size: 18px; color: #1e40af; font-weight: 800;">ORDER DISPATCHED &amp; IN TRANSIT</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #1d4ed8;">Your herbal remedies are on their way to you!</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Great news! Your package for order <strong>${escapeHtml(orderData.orderRef)}</strong> has been carefully prepared and is now dispatched with our courier rider.
+        The delivery rider will call or message you via WhatsApp (${escapeHtml(orderData.customer ? orderData.customer.phone : '')}) before arriving at your address.
+      </p>
+    `;
+    badgeHtml = `<span style="background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">In Transit 🚚</span>`;
+  } else if (status === 'delivered') {
+    emailSubject = `Delivered: Your Aduke Alagbo Remedies (${orderData.orderRef}) Have Arrived! 🌿`;
+    bannerHtml = `
+      <div style="background: #ecfdf5; border-bottom: 2px solid #6ee7b7; padding: 18px 24px; text-align: center;">
+        <div style="display: inline-block; background: #059669; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">🌿</div>
+        <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PACKAGE DELIVERED SUCCESSFULLY</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #047857;">Your remedies have safely arrived at your destination!</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Your Aduke Alagbo remedies for order <strong>${escapeHtml(orderData.orderRef)}</strong> have been marked as delivered! Thank you for trusting authentic ancestral African remedies for your health.
+        Please make sure to follow the dosage instructions. If you need any guidance on how to take your herbs, feel free to message Aduke Alagbo on WhatsApp anytime!
+      </p>
+    `;
+    badgeHtml = `<span style="background: #d1fae5; color: #065f46; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Delivered 🌿</span>`;
+  } else if (status === 'cancelled') {
+    emailSubject = `Order Notice: Aduke Alagbo Order (${orderData.orderRef}) Has Been Cancelled ❌`;
+    bannerHtml = `
+      <div style="background: #fef2f2; border-bottom: 2px solid #fca5a5; padding: 18px 24px; text-align: center;">
+        <div style="display: inline-block; background: #dc2626; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✕</div>
+        <h2 style="margin: 0; font-size: 18px; color: #991b1b; font-weight: 800;">ORDER CANCELLED</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #b91c1c;">Notice regarding order reference ${escapeHtml(orderData.orderRef)}</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Please be informed that your order <strong>${escapeHtml(orderData.orderRef)}</strong> has been cancelled by store administration.
+        ${note ? `<br><br><strong>Note / Reason:</strong> ${escapeHtml(note)}` : ''}
+        <br><br>If you have any questions or feel this was in error, please reach out directly to Aduke Alagbo on WhatsApp at <a href="https://wa.me/2349055126388" style="color: #18422e; font-weight: 700;">+234 905 512 6388</a>.
+      </p>
+    `;
+    badgeHtml = `<span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Cancelled ❌</span>`;
+  } else {
+    // Default: verified
+    emailSubject = `Payment Confirmed: Your Aduke Alagbo Order (${orderData.orderRef}) is Being Prepared! ✓`;
+    bannerHtml = `
+      <div style="background: #ecfdf5; border-bottom: 2px solid #86efac; padding: 18px 24px; text-align: center;">
+        <div style="display: inline-block; background: #10b981; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✓</div>
+        <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PAYMENT CONFIRMED &amp; VERIFIED</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #047857;">Your bank transfer payment has been confirmed by Aduke Alagbo!</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Good news! Aduke Alagbo has personally verified your bank transfer payment of <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
+        Your fresh ancestral herbal remedies are now being prepared, packaged with care, and scheduled for dispatch.
+      </p>
+    `;
+    badgeHtml = `<span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>`;
+  }
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
@@ -2077,13 +2151,13 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
 
         <div style="background: #f8fafc; border-left: 4px solid #18422e; padding: 14px 16px; border-radius: 6px; margin-bottom: 24px;">
           <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Delivery Destination</div>
-          <div style="font-size: 14px; color: #1e293b; font-weight: 600;">${orderData.customer.address}</div>
-          <div style="font-size: 13px; color: #475569; margin-top: 2px;">Phone: <strong>${orderData.customer.phone}</strong></div>
+          <div style="font-size: 14px; color: #1e293b; font-weight: 600;">${orderData.customer ? escapeHtml(orderData.customer.address) : ''}</div>
+          <div style="font-size: 13px; color: #475569; margin-top: 2px;">Phone: <strong>${orderData.customer ? escapeHtml(orderData.customer.phone) : ''}</strong></div>
         </div>
 
         <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
           <div style="font-size: 13px; color: #92400e; line-height: 1.5;">
-            🚚 <strong>Dispatch Notice:</strong> Our delivery rider will reach out to you via phone/WhatsApp (<strong>${orderData.customer.phone}</strong>) before arrival at your address.
+            🚚 <strong>Dispatch Notice:</strong> Our delivery rider will reach out to you via phone/WhatsApp (<strong>${orderData.customer ? escapeHtml(orderData.customer.phone) : ''}</strong>) before arrival at your address.
           </div>
         </div>
 
@@ -2114,10 +2188,6 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
     }
   ] : [];
 
-  const emailSubject = isOrderReceived
-    ? `Order Received: Your Aduke Alagbo Order (${orderData.orderRef}) has been placed! 🧾`
-    : `Payment Confirmed: Your Aduke Alagbo Order (${orderData.orderRef}) is Being Prepared! ✓`;
-
   const mailOptions = {
     from: `"Aduke Alagbo" <${SMTP_USER}>`,
     to: customerEmail,
@@ -2128,33 +2198,38 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
 
   const dispatchResult = await sendMailWithFallback(mailOptions);
   if (dispatchResult.sent) {
-    console.log(`[CUSTOMER CONFIRM EMAIL] Delivered to ${customerEmail} via ${dispatchResult.method}`);
-    return { sent: true, method: dispatchResult.method };
+    console.log(`[CUSTOMER STATUS EMAIL] Delivered (${status}) to ${customerEmail} via ${dispatchResult.method}`);
+    return { sent: true, method: dispatchResult.method, status };
   }
 
   // Fallback notice
-  console.log(`[CUSTOMER CONFIRM EMAIL - FALLBACK] Email dispatch attempted for ${customerEmail} (Order: ${orderData.orderRef}). Result: ${dispatchResult.error}`);
+  console.log(`[CUSTOMER STATUS EMAIL - FALLBACK] Email dispatch attempted for ${customerEmail} (Order: ${orderData.orderRef}, Status: ${status}). Result: ${dispatchResult.error}`);
   return { 
     sent: false, 
     simulated: true, 
-    message: `Payment confirmation dispatched for ${customerEmail}. Result: ${dispatchResult.error}` 
+    message: `Status email (${status}) dispatched for ${customerEmail}. Result: ${dispatchResult.error}`,
+    status
   };
 }
 
-// Endpoint to dispatch customer payment confirmation email (Admin Only)
+// Endpoint to dispatch customer payment confirmation / status email (Admin Only)
 app.post('/api/orders/confirm-payment-email', requireAdminAuth, async (req, res) => {
-  const { orderData } = req.body;
+  const { orderData, status, note } = req.body;
   if (!orderData || !orderData.orderRef) {
     return res.status(400).json({ success: false, message: 'orderData is required' });
   }
 
+  const effectiveStatus = status || orderData.status || 'verified';
   const cleanRef = (orderData.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
   const orders = await db.getOrders();
   const target = orders.find(o => (o.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase() === cleanRef);
 
-  const result = await sendCustomerPaymentConfirmationEmail({ ...orderData, type: 'payment_confirmed' });
+  const result = await sendCustomerPaymentConfirmationEmail(orderData, effectiveStatus, note);
   if (result && result.sent && target) {
-    target.paymentConfirmedEmailSent = true;
+    if (effectiveStatus === 'verified') target.paymentConfirmedEmailSent = true;
+    if (effectiveStatus === 'dispatched') target.dispatchedEmailSent = true;
+    if (effectiveStatus === 'delivered') target.deliveredEmailSent = true;
+    if (effectiveStatus === 'cancelled') target.cancelledEmailSent = true;
     await db.saveOrder(target);
   }
   res.json({ success: true, ...result });
@@ -2174,16 +2249,19 @@ app.patch('/api/orders/:orderRef/status', requireAdminAuth, async (req, res) => 
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  // Automatically send customer confirmation email when payment is verified
-  if (status === 'verified') {
-    sendCustomerPaymentConfirmationEmail({ ...order, type: 'payment_confirmed' })
+  // Automatically send customer confirmation/status email when status is verified, dispatched, delivered, or cancelled
+  if (['verified', 'dispatched', 'delivered', 'cancelled'].includes(status)) {
+    sendCustomerPaymentConfirmationEmail(order, status, note)
       .then(result => {
         if (result && result.sent) {
-          order.paymentConfirmedEmailSent = true;
+          if (status === 'verified') order.paymentConfirmedEmailSent = true;
+          if (status === 'dispatched') order.dispatchedEmailSent = true;
+          if (status === 'delivered') order.deliveredEmailSent = true;
+          if (status === 'cancelled') order.cancelledEmailSent = true;
           db.saveOrder(order).catch(e => console.warn('[SAVE ORDER]', e.message));
         }
       })
-      .catch(e => console.warn('[CONFIRM EMAIL]', e.message));
+      .catch(e => console.warn('[STATUS EMAIL]', e.message));
   }
 
   console.log(`[ORDER STATUS] ${order.orderRef} updated to ${status}`);
@@ -2204,15 +2282,18 @@ app.post('/api/orders/:orderRef/status', requireAdminAuth, async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  if (status === 'verified') {
-    sendCustomerPaymentConfirmationEmail({ ...order, type: 'payment_confirmed' })
+  if (['verified', 'dispatched', 'delivered', 'cancelled'].includes(status)) {
+    sendCustomerPaymentConfirmationEmail(order, status, note)
       .then(result => {
         if (result && result.sent) {
-          order.paymentConfirmedEmailSent = true;
+          if (status === 'verified') order.paymentConfirmedEmailSent = true;
+          if (status === 'dispatched') order.dispatchedEmailSent = true;
+          if (status === 'delivered') order.deliveredEmailSent = true;
+          if (status === 'cancelled') order.cancelledEmailSent = true;
           db.saveOrder(order).catch(e => console.warn('[SAVE ORDER]', e.message));
         }
       })
-      .catch(e => console.warn('[CONFIRM EMAIL]', e.message));
+      .catch(e => console.warn('[STATUS EMAIL]', e.message));
   }
 
   console.log(`[ORDER STATUS] ${order.orderRef} updated to ${status}`);

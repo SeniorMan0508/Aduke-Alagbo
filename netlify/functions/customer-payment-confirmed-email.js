@@ -89,30 +89,91 @@ exports.handler = async (event, context) => {
     </tr>
   `).join('');
 
-  const emailSubject = `Payment Confirmed: Your Aduke Alagbo Order (${orderRef}) is Being Prepared! ✓`;
+  const status = (body && (body.status || body.type)) || 
+                 (orderData && (orderData.status || orderData.type)) || 
+                 'verified';
+  const note = (body && body.note) || (orderData && orderData.note) || '';
 
   const deliveryNote = orderData.shippingMethod === 'nationwide'
     ? 'Interstate Courier (Sorted with dispatch rider)'
     : (orderData.shippingMethod === 'international' ? 'International DHL / FedEx (Sorted with courier)' : `Local Courier (₦${Number(orderData.shippingFee || 0).toLocaleString('en-NG')})`);
 
-  const bannerHtml = `
-    <!-- Green Success Confirmation Banner -->
-    <div style="background: #ecfdf5; border-bottom: 2px solid #86efac; padding: 18px 24px; text-align: center;">
-      <div style="display: inline-block; background: #10b981; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✓</div>
-      <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PAYMENT CONFIRMED &amp; VERIFIED</h2>
-      <p style="margin: 4px 0 0 0; font-size: 13px; color: #047857;">Your bank transfer payment has been confirmed by Aduke Alagbo!</p>
-    </div>
-  `;
+  let emailSubject = `Payment Confirmed: Your Aduke Alagbo Order (${orderRef}) is Being Prepared! ✓`;
+  let bannerHtml = '';
+  let messageHtml = '';
+  let badgeHtml = '';
 
-  const messageHtml = `
-    <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
-    <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-      Good news! Aduke Alagbo has personally verified your bank transfer payment of <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
-      Your fresh ancestral herbal remedies are now being prepared, packaged with care, and scheduled for dispatch.
-    </p>
-  `;
-
-  const badgeHtml = `<span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>`;
+  if (status === 'dispatched') {
+    emailSubject = `Dispatched: Your Aduke Alagbo Order (${orderRef}) is on Its Way! 🚚`;
+    bannerHtml = `
+      <div style="background: #eff6ff; border-bottom: 2px solid #93c5fd; padding: 18px 24px; text-align: center;">
+        <div style="display: inline-block; background: #2563eb; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">🚚</div>
+        <h2 style="margin: 0; font-size: 18px; color: #1e40af; font-weight: 800;">ORDER DISPATCHED &amp; IN TRANSIT</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #1d4ed8;">Your herbal remedies are on their way to you!</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Great news! Your package for order <strong>${orderRef}</strong> has been carefully prepared and is now dispatched with our courier rider.
+        The delivery rider will call or message you via WhatsApp (${escapeHtml(orderData.customer ? orderData.customer.phone : '')}) before arriving at your address.
+      </p>
+    `;
+    badgeHtml = `<span style="background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">In Transit 🚚</span>`;
+  } else if (status === 'delivered') {
+    emailSubject = `Delivered: Your Aduke Alagbo Remedies (${orderRef}) Have Arrived! 🌿`;
+    bannerHtml = `
+      <div style="background: #ecfdf5; border-bottom: 2px solid #6ee7b7; padding: 18px 24px; text-align: center;">
+        <div style="display: inline-block; background: #059669; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">🌿</div>
+        <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PACKAGE DELIVERED SUCCESSFULLY</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #047857;">Your remedies have safely arrived at your destination!</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Your Aduke Alagbo remedies for order <strong>${orderRef}</strong> have been marked as delivered! Thank you for trusting authentic ancestral African remedies for your health.
+        Please make sure to follow the dosage instructions. If you need any guidance on how to take your herbs, feel free to message Aduke Alagbo on WhatsApp anytime!
+      </p>
+    `;
+    badgeHtml = `<span style="background: #d1fae5; color: #065f46; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Delivered 🌿</span>`;
+  } else if (status === 'cancelled') {
+    emailSubject = `Order Notice: Aduke Alagbo Order (${orderRef}) Has Been Cancelled ❌`;
+    bannerHtml = `
+      <div style="background: #fef2f2; border-bottom: 2px solid #fca5a5; padding: 18px 24px; text-align: center;">
+        <div style="display: inline-block; background: #dc2626; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✕</div>
+        <h2 style="margin: 0; font-size: 18px; color: #991b1b; font-weight: 800;">ORDER CANCELLED</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #b91c1c;">Notice regarding order reference ${orderRef}</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Please be informed that your order <strong>${orderRef}</strong> has been cancelled by store administration.
+        ${note ? `<br><br><strong>Note / Reason:</strong> ${escapeHtml(note)}` : ''}
+        <br><br>If you have any questions or feel this was in error, please reach out directly to Aduke Alagbo on WhatsApp at <a href="https://wa.me/2349055126388" style="color: #18422e; font-weight: 700;">+234 905 512 6388</a>.
+      </p>
+    `;
+    badgeHtml = `<span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Cancelled ❌</span>`;
+  } else {
+    // Default: 'verified'
+    emailSubject = `Payment Confirmed: Your Aduke Alagbo Order (${orderRef}) is Being Prepared! ✓`;
+    bannerHtml = `
+      <div style="background: #ecfdf5; border-bottom: 2px solid #86efac; padding: 18px 24px; text-align: center;">
+        <div style="display: inline-block; background: #10b981; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✓</div>
+        <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PAYMENT CONFIRMED &amp; VERIFIED</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #047857;">Your bank transfer payment has been confirmed by Aduke Alagbo!</p>
+      </div>
+    `;
+    messageHtml = `
+      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+        Good news! Aduke Alagbo has personally verified your bank transfer payment of <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
+        Your fresh ancestral herbal remedies are now being prepared, packaged with care, and scheduled for dispatch.
+      </p>
+    `;
+    badgeHtml = `<span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>`;
+  }
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
@@ -229,13 +290,14 @@ exports.handler = async (event, context) => {
       attachments: emailAttachments
     });
 
-    console.log(`[CUSTOMER CONFIRM EMAIL] ${isOrderReceived ? 'Order received' : 'Payment confirmation'} email sent to ${customerEmail} for order ${orderRef}`);
+    console.log(`[CUSTOMER STATUS EMAIL] Order ${orderRef} (${status}) email delivered to ${customerEmail}`);
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({ 
         success: true, 
-        message: `${isOrderReceived ? 'Order received' : 'Payment confirmation'} email sent directly to customer (${customerEmail})` 
+        status: status,
+        message: `Order status email (${status}) sent directly to customer (${customerEmail})` 
       })
     };
   } catch (err) {

@@ -828,7 +828,8 @@ async function sendOwnerOrderAlert(orderData, ownerEmail) {
 const recentlyNotifiedOrders = new Map();
 
 // --- MASTER ORDER NOTIFICATION DISPATCHER ---
-// Sends alert email to store owner AND order confirmation to buyer
+// Sends alert email EXCLUSIVELY to the store owner (admin)
+// The buyer receives NO email at checkout. Buyer receives confirmation ONLY after admin confirms in the dashboard.
 async function sendOrderNotificationEmail(orderData) {
   if (!orderData || !orderData.orderRef) {
     return { sent: false, message: 'Invalid order data' };
@@ -858,29 +859,18 @@ async function sendOrderNotificationEmail(orderData) {
 
   console.log(`[ORDER DISPATCH] Sending admin order alert for order ${orderData.orderRef}...`);
   console.log(`[ORDER DISPATCH] Store Owner: ${ownerEmail}`);
+  console.log(`[ORDER DISPATCH] (Buyer email held until admin confirms payment in dashboard)`);
 
   const ownerResult = await sendOwnerOrderAlert(orderData, ownerEmail);
   const ownerSent = Boolean(ownerResult && ownerResult.sent);
 
-  // Also dispatch order received email to the buyer if email is provided
-  let customerResult = { sent: false };
-  if (orderData.customer && orderData.customer.email && orderData.customer.email.includes('@')) {
-    try {
-      customerResult = await sendCustomerPaymentConfirmationEmail({ ...orderData, type: 'order_received' });
-      console.log(`[ORDER DISPATCH] Buyer Order Received email -> ${orderData.customer.email}: ${customerResult.sent ? 'DELIVERED ✓' : 'FAILED ✗'}`);
-    } catch (err) {
-      console.warn(`[ORDER DISPATCH] Buyer email error:`, err.message);
-    }
-  }
-
-  console.log(`[ORDER DISPATCH RESULT] ${orderData.orderRef} -> Owner Alert: ${ownerSent ? 'DELIVERED ✓' : 'FAILED ✗'}, Buyer Email: ${customerResult.sent ? 'DELIVERED ✓' : 'PENDING/DIRECT'}`);
+  console.log(`[ORDER DISPATCH RESULT] ${orderData.orderRef} -> Owner Alert: ${ownerSent ? 'DELIVERED ✓' : 'FAILED ✗'}, Buyer Email: HELD_UNTIL_ADMIN_CONFIRMATION`);
 
   return {
-    sent: ownerSent || Boolean(customerResult.sent),
+    sent: ownerSent,
     ownerEmailSent: ownerSent,
-    customerEmailSent: Boolean(customerResult.sent),
-    ownerResult,
-    customerResult
+    customerEmailSent: false,
+    ownerResult
   };
 }
 
@@ -1947,19 +1937,17 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
 
   const cleanRef = (orderData.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
   const now = Date.now();
-  const isOrderReceived = (orderData.type === 'order_received' || (orderData.status === 'pending' && orderData.type !== 'payment_confirmed'));
-  const dedupeKey = `${cleanRef}:${isOrderReceived ? 'received' : 'confirmed'}`;
 
-  // Deduplication guard: ignore duplicate calls for the same order and email type within 15 seconds
-  if (cleanRef && recentlyConfirmedPayments.has(dedupeKey)) {
-    const lastSent = recentlyConfirmedPayments.get(dedupeKey);
+  // Deduplication guard: ignore duplicate calls for the same order within 15 seconds
+  if (cleanRef && recentlyConfirmedPayments.has(cleanRef)) {
+    const lastSent = recentlyConfirmedPayments.get(cleanRef);
     if (now - lastSent < 15000) {
-      console.log(`[CUSTOMER CONFIRM EMAIL] ${isOrderReceived ? 'Order received' : 'Payment confirmation'} for ${orderData.orderRef} already sent within last 15s. Skipping duplicate.`);
+      console.log(`[CUSTOMER CONFIRM EMAIL] Payment confirmation for ${orderData.orderRef} already sent within last 15s. Skipping duplicate.`);
       return { sent: true, skippedDuplicate: true, orderRef: orderData.orderRef };
     }
   }
   if (cleanRef) {
-    recentlyConfirmedPayments.set(dedupeKey, now);
+    recentlyConfirmedPayments.set(cleanRef, now);
   }
 
   const customerEmail = orderData.customer.email.trim();
@@ -1973,15 +1961,14 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        type: isOrderReceived ? 'order_received' : 'payment_confirmed',
-        orderData: { ...orderData, type: isOrderReceived ? 'order_received' : 'payment_confirmed' } 
+        orderData: { ...orderData, type: 'payment_confirmed' } 
       }),
       signal: controller.signal
     });
     clearTimeout(timer);
     const relayData = await relayRes.json();
     if (relayRes.ok && relayData.success) {
-      console.log(`[CUSTOMER CONFIRM EMAIL] Delivered to ${customerEmail} via Netlify HTTPS relay (${isOrderReceived ? 'order_received' : 'payment_confirmed'})`);
+      console.log(`[CUSTOMER CONFIRM EMAIL] Delivered to ${customerEmail} via Netlify HTTPS relay`);
       return { sent: true, method: 'netlify_https_relay' };
     }
   } catch (err) {
@@ -2011,13 +1998,7 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
     ? 'Interstate Courier (Sorted with dispatch rider)'
     : (orderData.shippingMethod === 'international' ? 'International DHL / FedEx (Sorted with courier)' : `Local Courier (₦${Number(orderData.shippingFee || 0).toLocaleString('en-NG')})`);
 
-  const bannerHtml = isOrderReceived ? `
-    <div style="background: #fefce8; border-bottom: 2px solid #fef08a; padding: 18px 24px; text-align: center;">
-      <div style="display: inline-block; background: #eab308; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">🧾</div>
-      <h2 style="margin: 0; font-size: 18px; color: #854d0e; font-weight: 800;">ORDER &amp; PAYMENT PROOF RECEIVED</h2>
-      <p style="margin: 4px 0 0 0; font-size: 13px; color: #a16207;">Thank you! Your order has been placed and payment proof received.</p>
-    </div>
-  ` : `
+  const bannerHtml = `
     <div style="background: #ecfdf5; border-bottom: 2px solid #86efac; padding: 18px 24px; text-align: center;">
       <div style="display: inline-block; background: #10b981; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✓</div>
       <h2 style="margin: 0; font-size: 18px; color: #065f46; font-weight: 800;">PAYMENT CONFIRMED &amp; VERIFIED</h2>
@@ -2025,13 +2006,7 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
     </div>
   `;
 
-  const messageHtml = isOrderReceived ? `
-    <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
-    <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-      Thank you for shopping with <strong>Aduke Alagbo</strong>! We have successfully received your order and payment proof for <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
-      Our team is reviewing your bank transfer. Once your payment is verified, you will receive an official payment confirmation and dispatch tracking update!
-    </p>
-  ` : `
+  const messageHtml = `
     <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
     <p style="color: #475569; font-size: 14px; line-height: 1.6;">
       Good news! Aduke Alagbo has personally verified your bank transfer payment of <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
@@ -2039,9 +2014,7 @@ async function sendCustomerPaymentConfirmationEmail(orderData) {
     </p>
   `;
 
-  const badgeHtml = isOrderReceived
-    ? `<span style="background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Awaiting Verification ⏳</span>`
-    : `<span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>`;
+  const badgeHtml = `<span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>`;
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">

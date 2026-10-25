@@ -89,25 +89,13 @@ exports.handler = async (event, context) => {
     </tr>
   `).join('');
 
-  const isOrderReceived = (body && (body.type === 'order_received' || body.action === 'order_received')) || 
-                           (orderData && (orderData.type === 'order_received' || (orderData.status === 'pending' && orderData.type !== 'payment_confirmed')));
-
-  const emailSubject = isOrderReceived
-    ? `Order Received: Your Aduke Alagbo Order (${orderRef}) has been placed! 🧾`
-    : `Payment Confirmed: Your Aduke Alagbo Order (${orderRef}) is Being Prepared! ✓`;
+  const emailSubject = `Payment Confirmed: Your Aduke Alagbo Order (${orderRef}) is Being Prepared! ✓`;
 
   const deliveryNote = orderData.shippingMethod === 'nationwide'
     ? 'Interstate Courier (Sorted with dispatch rider)'
     : (orderData.shippingMethod === 'international' ? 'International DHL / FedEx (Sorted with courier)' : `Local Courier (₦${Number(orderData.shippingFee || 0).toLocaleString('en-NG')})`);
 
-  const bannerHtml = isOrderReceived ? `
-    <!-- Yellow Order Received Confirmation Banner -->
-    <div style="background: #fefce8; border-bottom: 2px solid #fef08a; padding: 18px 24px; text-align: center;">
-      <div style="display: inline-block; background: #eab308; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">🧾</div>
-      <h2 style="margin: 0; font-size: 18px; color: #854d0e; font-weight: 800;">ORDER &amp; PAYMENT PROOF RECEIVED</h2>
-      <p style="margin: 4px 0 0 0; font-size: 13px; color: #a16207;">Thank you! Your order has been placed and payment proof received.</p>
-    </div>
-  ` : `
+  const bannerHtml = `
     <!-- Green Success Confirmation Banner -->
     <div style="background: #ecfdf5; border-bottom: 2px solid #86efac; padding: 18px 24px; text-align: center;">
       <div style="display: inline-block; background: #10b981; color: #ffffff; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; margin-bottom: 6px;">✓</div>
@@ -116,13 +104,7 @@ exports.handler = async (event, context) => {
     </div>
   `;
 
-  const messageHtml = isOrderReceived ? `
-    <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
-    <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-      Thank you for shopping with <strong>Aduke Alagbo</strong>! We have successfully received your order and payment proof for <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
-      Our team is reviewing your bank transfer. Once your payment is verified, you will receive an official payment confirmation and dispatch tracking update!
-    </p>
-  ` : `
+  const messageHtml = `
     <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
     <p style="color: #475569; font-size: 14px; line-height: 1.6;">
       Good news! Aduke Alagbo has personally verified your bank transfer payment of <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
@@ -130,9 +112,7 @@ exports.handler = async (event, context) => {
     </p>
   `;
 
-  const badgeHtml = isOrderReceived
-    ? `<span style="background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Awaiting Verification ⏳</span>`
-    : `<span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>`;
+  const badgeHtml = `<span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Payment Confirmed ✓</span>`;
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">

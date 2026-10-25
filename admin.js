@@ -2143,9 +2143,24 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(emailPayload)
-        }).then(res => res.json()).catch(err => {
-          console.warn(`[ORDER EMAIL] Direct Netlify attempt (${normalizedStatus}):`, err.message);
-          return null;
+        }).then(res => {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.json();
+        }).catch(err => {
+          console.warn(`[ORDER EMAIL] Primary Netlify attempt (${normalizedStatus}) failed, trying fallback relay:`, err.message);
+          return fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "customer_payment_confirmed",
+              status: normalizedStatus,
+              note: note || "",
+              orderData: { ...targetOrder, status: normalizedStatus, note: note || "" }
+            })
+          }).then(res => res.json()).catch(fallbackErr => {
+            console.warn(`[ORDER EMAIL] Fallback relay also failed:`, fallbackErr.message);
+            return null;
+          });
         });
 
         const friendlyMessages = {

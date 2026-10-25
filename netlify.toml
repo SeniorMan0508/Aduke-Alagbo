@@ -1,0 +1,12 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+  command = "echo 'Aduke Alagbo build complete'"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps --no-audit"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

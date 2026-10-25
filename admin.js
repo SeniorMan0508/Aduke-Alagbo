@@ -571,15 +571,18 @@
         if (targetId === "tabOrders") {
           renderOrdersTable();
           updateStats();
+          syncOrdersFromServer();
         }
         if (targetId === "tabInventory") {
           renderInventoryTracker();
         }
         if (targetId === "tabManage") {
           renderManageTable();
+          syncProductsFromServer();
         }
         if (targetId === "tabCategories") {
           renderCategoriesTable();
+          syncServerCategories();
         }
         if (targetId === "tabReviews") {
           renderAdminReviews();
@@ -896,7 +899,7 @@
   }
 
   // Handle Delete Product
-  function handleDeleteProduct(productId, productName) {
+  async function handleDeleteProduct(productId, productName) {
     const confirmed = window.confirm(`Are you sure you want to remove '${productName}' from your store? It will disappear from the Shop page immediately.`);
     if (!confirmed) return;
 
@@ -905,10 +908,17 @@
       showAdminToast(`'${productName}' removed from shop.`, "🗑️");
       updateStats();
       renderManageTable();
+      renderInventoryTracker();
     }
 
     try {
-      authFetch(`${getApiBaseUrl()}/api/products/${encodeURIComponent(productId)}`, { method: "DELETE" }).catch(() => {});
+      const res = await authFetch(`${getApiBaseUrl()}/api/products/${encodeURIComponent(productId)}`, { method: "DELETE" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.deletedProductIds)) {
+          localStorage.setItem(QUADACE_STORAGE_KEYS.DELETED_PRODUCTS, JSON.stringify(data.deletedProductIds));
+        }
+      }
     } catch (e) {}
   }
 
@@ -1298,7 +1308,13 @@
     if (!confirmed) return;
 
     try {
-      await authFetch(`${getApiBaseUrl()}/api/reviews/${encodeURIComponent(reviewId)}`, { method: "DELETE" });
+      const res = await authFetch(`${getApiBaseUrl()}/api/reviews/${encodeURIComponent(reviewId)}`, { method: "DELETE" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.reviews)) {
+          localStorage.setItem(REVIEWS_STORAGE_KEY, JSON.stringify(data.reviews));
+        }
+      }
     } catch (e) {}
 
     try {
@@ -2207,7 +2223,13 @@
 
     // 5. Delete on backend API (Admin Authenticated)
     try {
-      await authFetch(`${getApiBaseUrl()}/api/orders/${encodeURIComponent(cleanRef)}`, { method: "DELETE" });
+      const res = await authFetch(`${getApiBaseUrl()}/api/orders/${encodeURIComponent(cleanRef)}`, { method: "DELETE" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.deletedOrderRefs)) {
+          localStorage.setItem("aduke_deleted_orders", JSON.stringify(data.deletedOrderRefs));
+        }
+      }
     } catch (e) {
       console.warn("Backend order delete error:", e);
     }
@@ -2300,48 +2322,34 @@
     if (container) container.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  // Sync Orders from Server (Smart merge without reviving deleted orders)
+  // Sync Orders from Server (Authoritative Cross-Device Sync)
   async function syncOrdersFromServer() {
     try {
       const res = await authFetch(`${getApiBaseUrl()}/api/orders`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.orders)) {
-          const localOrders = (typeof getStoreOrders === "function") ? getStoreOrders() : [];
+          // Mark this browser as having connected to backend so seed orders are never re-created
+          try { localStorage.setItem("aduke_has_synced_orders", "true"); } catch (e) {}
 
-          let deletedRefs = [];
+          const serverOrders = data.orders;
+          const serverDeletedRefs = Array.isArray(data.deletedOrderRefs) ? data.deletedOrderRefs : [];
+
+          // Persist server deleted refs into client localStorage
           try {
-            deletedRefs = JSON.parse(localStorage.getItem("aduke_deleted_orders") || "[]");
+            let localDeleted = JSON.parse(localStorage.getItem("aduke_deleted_orders") || "[]");
+            if (!Array.isArray(localDeleted)) localDeleted = [];
+            const mergedDeleted = Array.from(new Set([...localDeleted, ...serverDeletedRefs]));
+            localStorage.setItem("aduke_deleted_orders", JSON.stringify(mergedDeleted));
           } catch (e) {}
 
           const norm = r => (r || "").toString().trim().replace(/^#/, "").toLowerCase();
 
-          // Filter out orders that the owner has explicitly deleted
-          const activeServerOrders = data.orders.filter(so => {
+          // Filter out orders that have been marked deleted
+          const activeOrders = serverOrders.filter(so => {
             const cr = norm(so.orderRef);
-            return !deletedRefs.includes(cr) && !deletedRefs.includes(so.orderRef);
-          });
-
-          // Smart merge: keep local orders that might be newly created or not yet synced to server
-          const ordersMap = new Map();
-          activeServerOrders.forEach(so => {
-            ordersMap.set(norm(so.orderRef), so);
-          });
-
-          localOrders.forEach(lo => {
-            const lr = norm(lo.orderRef);
-            if (!deletedRefs.includes(lr) && !ordersMap.has(lr)) {
-              ordersMap.set(lr, lo);
-              // Push local order to server so backend has it too, but NEVER send an email alert!
-              fetch(`${getApiBaseUrl()}/api/orders`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...lo, isSync: true, skipEmail: true })
-              }).catch(() => {});
-            }
-          });
-
-          const merged = Array.from(ordersMap.values()).sort((a, b) => {
+            return !serverDeletedRefs.includes(cr) && !serverDeletedRefs.includes(so.orderRef);
+          }).sort((a, b) => {
             return new Date(b.createdAt || b.timestamp || 0) - new Date(a.createdAt || a.timestamp || 0);
           });
 
@@ -2349,20 +2357,27 @@
           let hasNewOrder = false;
           let latestNew = null;
 
-          merged.forEach(ord => {
-            if (lastKnownOrderRefs.size > 0 && !lastKnownOrderRefs.has(ord.orderRef)) {
+          activeOrders.forEach(ord => {
+            const r = norm(ord.orderRef);
+            if (lastKnownOrderRefs.size > 0 && !lastKnownOrderRefs.has(r) && !lastKnownOrderRefs.has(ord.orderRef)) {
               hasNewOrder = true;
               latestNew = ord;
             }
+          });
+
+          // Rebuild in-memory cache to strictly match active server orders
+          lastKnownOrderRefs.clear();
+          activeOrders.forEach(ord => {
+            lastKnownOrderRefs.add(norm(ord.orderRef));
             lastKnownOrderRefs.add(ord.orderRef);
           });
 
-          // Safe localStorage persistence (protects against QuotaExceededError so UI never breaks)
+          // Authoritative save: replace local orders with server orders
           try {
-            localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(merged));
+            localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(activeOrders));
           } catch (storageErr) {
             console.warn("Storage quota limit reached in admin sync; trimming heavy dataUrls for quota safety:", storageErr);
-            const safeMerged = merged.map(o => {
+            const safeMerged = activeOrders.map(o => {
               if (o.receiptProof && o.receiptProof.dataUrl && o.receiptProof.dataUrl.length > 50000) {
                 return {
                   ...o,
@@ -2427,22 +2442,95 @@
     };
   }
 
-  // Live order polling every 8 seconds
+  // Authoritative Cross-Device Sync for Products
+  async function syncProductsFromServer() {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/products`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) {
+          let updated = false;
+
+          if (Array.isArray(data.products)) {
+            const currentCustom = localStorage.getItem(QUADACE_STORAGE_KEYS.CUSTOM_PRODUCTS);
+            const serverCustomStr = JSON.stringify(data.products);
+            if (currentCustom !== serverCustomStr) {
+              localStorage.setItem(QUADACE_STORAGE_KEYS.CUSTOM_PRODUCTS, serverCustomStr);
+              updated = true;
+            }
+          }
+
+          if (Array.isArray(data.deletedProductIds)) {
+            const currentDeleted = localStorage.getItem(QUADACE_STORAGE_KEYS.DELETED_PRODUCTS);
+            const serverDeletedStr = JSON.stringify(data.deletedProductIds);
+            if (currentDeleted !== serverDeletedStr) {
+              localStorage.setItem(QUADACE_STORAGE_KEYS.DELETED_PRODUCTS, serverDeletedStr);
+              updated = true;
+            }
+          }
+
+          if (updated) {
+            renderManageTable();
+            renderInventoryTracker();
+            updateStats();
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Live cross-device synchronization (every 8 seconds, on tab focus, and on visibility change)
   function startOrderLiveSync() {
     if (livePollingTimer) clearInterval(livePollingTimer);
 
     // Initial cache of known refs
     const existing = (typeof getStoreOrders === "function") ? getStoreOrders() : [];
-    existing.forEach(o => lastKnownOrderRefs.add(o.orderRef));
+    existing.forEach(o => {
+      lastKnownOrderRefs.add((o.orderRef || "").toString().trim().replace(/^#/, '').toLowerCase());
+      lastKnownOrderRefs.add(o.orderRef);
+    });
 
+    // Immediate sync
+    syncOrdersFromServer();
+    syncProductsFromServer();
+    syncServerCategories();
+
+    // Poll every 8 seconds for continuous real-time cross-device alignment
     livePollingTimer = setInterval(() => {
       syncOrdersFromServer();
+      syncProductsFromServer();
+      syncServerCategories();
     }, 8000);
+
+    // Trigger instant sync when switching back to tab or unlocking device
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        syncOrdersFromServer();
+        syncProductsFromServer();
+        syncServerCategories();
+      }
+    });
+
+    window.addEventListener("focus", () => {
+      syncOrdersFromServer();
+      syncProductsFromServer();
+      syncServerCategories();
+    });
 
     // Listen to local window events
     window.addEventListener("storage", (e) => {
-      if (e.key === "quadace_orders" || e.key === "quadace_inventory") {
+      if (
+        e.key === QUADACE_STORAGE_KEYS.ORDERS ||
+        e.key === "aduke_deleted_orders" ||
+        e.key === QUADACE_STORAGE_KEYS.CUSTOM_PRODUCTS ||
+        e.key === QUADACE_STORAGE_KEYS.DELETED_PRODUCTS ||
+        e.key === QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES ||
+        e.key === QUADACE_STORAGE_KEYS.DELETED_CATEGORIES ||
+        e.key === QUADACE_STORAGE_KEYS.INVENTORY
+      ) {
         renderOrdersTable();
+        renderManageTable();
+        renderCategoriesTable();
         renderInventoryTracker();
         updateStats();
       }
@@ -2649,6 +2737,7 @@
     renderCategoriesTable();
     syncServerCategories();
     syncOrdersFromServer();
+    syncProductsFromServer();
     startOrderLiveSync();
     checkDatabaseStatus();
     getAdminReviews().then(reviews => updateReviewsStats(reviews.length));
@@ -2929,7 +3018,13 @@
     }
 
     try {
-      await authFetch(`${getApiBaseUrl()}/api/categories/${encodeURIComponent(catId)}`, { method: "DELETE" });
+      const res = await authFetch(`${getApiBaseUrl()}/api/categories/${encodeURIComponent(catId)}`, { method: "DELETE" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.deletedCategoryIds)) {
+          localStorage.setItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES, JSON.stringify(data.deletedCategoryIds));
+        }
+      }
     } catch (e) {}
 
     showAdminToast(`Category '${catName}' removed.`, "🗑️");
@@ -3072,26 +3167,34 @@
     }
   }
 
+  // Authoritative Cross-Device Sync for Categories
   async function syncServerCategories() {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/categories`);
       if (res.ok) {
         const data = await res.json();
-        if (data.success && Array.isArray(data.categories) && data.categories.length > 0) {
-          const localSaved = localStorage.getItem("quadace_custom_categories");
-          let localCustom = localSaved ? JSON.parse(localSaved) : [];
-          if (!Array.isArray(localCustom)) localCustom = [];
+        if (data && data.success) {
+          let updated = false;
 
-          let changed = false;
-          data.categories.forEach(serverCat => {
-            if (!localCustom.some(c => c.id === serverCat.id)) {
-              localCustom.push(serverCat);
-              changed = true;
+          if (Array.isArray(data.categories)) {
+            const currentCustom = localStorage.getItem(QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES);
+            const serverCustomStr = JSON.stringify(data.categories);
+            if (currentCustom !== serverCustomStr) {
+              localStorage.setItem(QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES, serverCustomStr);
+              updated = true;
             }
-          });
+          }
 
-          if (changed) {
-            localStorage.setItem("quadace_custom_categories", JSON.stringify(localCustom));
+          if (Array.isArray(data.deletedCategoryIds)) {
+            const currentDeleted = localStorage.getItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES);
+            const serverDeletedStr = JSON.stringify(data.deletedCategoryIds);
+            if (currentDeleted !== serverDeletedStr) {
+              localStorage.setItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES, serverDeletedStr);
+              updated = true;
+            }
+          }
+
+          if (updated) {
             renderCategoriesTable();
             populateCategorySelect();
             updateStats();

@@ -799,7 +799,14 @@ function getStoreOrders() {
   } catch (e) {
     console.warn("Could not read orders from localStorage", e);
   }
-  // Initialize with authentic seed orders only on very first visit
+  // If store has already synced with the server previously, an empty list is intentional (never re-seed)
+  try {
+    if (localStorage.getItem("aduke_has_synced_orders") === "true") {
+      return [];
+    }
+  } catch (e) {}
+
+  // Initialize with authentic seed orders only on very first visit before any server connection
   try {
     localStorage.setItem(QUADACE_STORAGE_KEYS.ORDERS, JSON.stringify(DEFAULT_STORE_ORDERS));
   } catch (e) {}
@@ -1090,6 +1097,46 @@ function getProductSalesStats() {
   });
 
   return list;
+}
+
+// ==========================================================================
+// AUTOMATIC PUBLIC CATALOG & CATEGORIES CROSS-DEVICE SYNC
+// ==========================================================================
+if (typeof window !== "undefined") {
+  (function autoSyncPublicCatalog() {
+    const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    const apiBase = isLocal ? "http://localhost:3000" : "https://aduke-alagbo.onrender.com";
+
+    // Background sync active custom products and deleted items from server
+    fetch(`${apiBase}/api/products`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.success) {
+          if (Array.isArray(data.products)) {
+            try { localStorage.setItem(QUADACE_STORAGE_KEYS.CUSTOM_PRODUCTS, JSON.stringify(data.products)); } catch (e) {}
+          }
+          if (Array.isArray(data.deletedProductIds)) {
+            try { localStorage.setItem(QUADACE_STORAGE_KEYS.DELETED_PRODUCTS, JSON.stringify(data.deletedProductIds)); } catch (e) {}
+          }
+        }
+      })
+      .catch(() => {});
+
+    // Background sync active categories and deleted categories from server
+    fetch(`${apiBase}/api/categories`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.success) {
+          if (Array.isArray(data.categories)) {
+            try { localStorage.setItem(QUADACE_STORAGE_KEYS.CUSTOM_CATEGORIES, JSON.stringify(data.categories)); } catch (e) {}
+          }
+          if (Array.isArray(data.deletedCategoryIds)) {
+            try { localStorage.setItem(QUADACE_STORAGE_KEYS.DELETED_CATEGORIES, JSON.stringify(data.deletedCategoryIds)); } catch (e) {}
+          }
+        }
+      })
+      .catch(() => {});
+  })();
 }
 
 

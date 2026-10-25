@@ -103,6 +103,106 @@ const CATEGORIES_FILE = path.join(DATA_DIR, 'custom-categories.json');
 const REVIEWS_FILE = path.join(DATA_DIR, 'reviews.json');
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
 const INVENTORY_FILE = path.join(DATA_DIR, 'inventory.json');
+const DELETED_ORDERS_FILE = path.join(DATA_DIR, 'deleted-orders.json');
+const DELETED_PRODUCTS_FILE = path.join(DATA_DIR, 'deleted-products.json');
+const DELETED_CATEGORIES_FILE = path.join(DATA_DIR, 'deleted-categories.json');
+
+// --- CROSS-DEVICE DELETED ENTITIES TRACKING ---
+function getDeletedOrders() {
+  try {
+    if (fs.existsSync(DELETED_ORDERS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(DELETED_ORDERS_FILE, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveDeletedOrders(list) {
+  try {
+    fs.writeFileSync(DELETED_ORDERS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+function recordDeletedOrder(orderRef) {
+  if (!orderRef) return;
+  const clean = (orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
+  const list = getDeletedOrders();
+  if (!list.includes(clean)) list.push(clean);
+  if (!list.includes(orderRef)) list.push(orderRef);
+  saveDeletedOrders(list);
+}
+
+function isOrderDeleted(orderRef) {
+  if (!orderRef) return false;
+  const clean = (orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
+  const list = getDeletedOrders();
+  return list.includes(clean) || list.includes(orderRef);
+}
+
+function getDeletedProducts() {
+  try {
+    if (fs.existsSync(DELETED_PRODUCTS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(DELETED_PRODUCTS_FILE, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveDeletedProducts(list) {
+  try {
+    fs.writeFileSync(DELETED_PRODUCTS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+function recordDeletedProduct(productId) {
+  if (!productId) return;
+  const list = getDeletedProducts();
+  if (!list.includes(productId)) {
+    list.push(productId);
+    saveDeletedProducts(list);
+  }
+}
+
+function unmarkDeletedProduct(productId) {
+  if (!productId) return;
+  let list = getDeletedProducts();
+  list = list.filter(id => id !== productId);
+  saveDeletedProducts(list);
+}
+
+function getDeletedCategories() {
+  try {
+    if (fs.existsSync(DELETED_CATEGORIES_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(DELETED_CATEGORIES_FILE, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveDeletedCategories(list) {
+  try {
+    fs.writeFileSync(DELETED_CATEGORIES_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+function recordDeletedCategory(catId) {
+  if (!catId) return;
+  const list = getDeletedCategories();
+  if (!list.includes(catId)) {
+    list.push(catId);
+    saveDeletedCategories(list);
+  }
+}
+
+function unmarkDeletedCategory(catId) {
+  if (!catId) return;
+  let list = getDeletedCategories();
+  list = list.filter(id => id !== catId);
+  saveDeletedCategories(list);
+}
 
 // --- CRYPTOGRAPHIC UTILITIES ---
 function hashSecret(secret, salt = crypto.randomBytes(16).toString('hex')) {
@@ -1183,11 +1283,12 @@ function saveCustomProducts(products) {
 
 /**
  * GET /api/products
- * Get all custom products stored on server
+ * Get all custom products and deleted product IDs stored on server
  */
 app.get('/api/products', (req, res) => {
   const products = getCustomProducts();
-  res.json({ success: true, products });
+  const deletedProductIds = getDeletedProducts();
+  res.json({ success: true, products, deletedProductIds });
 });
 
 /**
@@ -1200,6 +1301,8 @@ app.post('/api/products', requireAdminAuth, (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid product data' });
   }
 
+  unmarkDeletedProduct(product.id);
+
   const products = getCustomProducts();
   const existingIdx = products.findIndex(p => p.id === product.id);
   if (existingIdx >= 0) {
@@ -1209,7 +1312,7 @@ app.post('/api/products', requireAdminAuth, (req, res) => {
   }
 
   saveCustomProducts(products);
-  res.json({ success: true, product, message: 'Product saved on server' });
+  res.json({ success: true, product, deletedProductIds: getDeletedProducts(), message: 'Product saved on server' });
 });
 
 /**
@@ -1221,7 +1324,8 @@ app.delete('/api/products/:id', requireAdminAuth, (req, res) => {
   let products = getCustomProducts();
   products = products.filter(p => p.id !== id);
   saveCustomProducts(products);
-  res.json({ success: true, message: 'Product deleted from server' });
+  recordDeletedProduct(id);
+  res.json({ success: true, message: 'Product deleted from server', deletedId: id, deletedProductIds: getDeletedProducts() });
 });
 
 // --- CATEGORIES API ENDPOINTS ---
@@ -1250,11 +1354,12 @@ function saveCustomCategories(categories) {
 
 /**
  * GET /api/categories
- * Retrieve all custom categories stored on server
+ * Retrieve all custom categories and deleted category IDs stored on server
  */
 app.get('/api/categories', (req, res) => {
   const categories = getCustomCategories();
-  res.json({ success: true, categories });
+  const deletedCategoryIds = getDeletedCategories();
+  res.json({ success: true, categories, deletedCategoryIds });
 });
 
 /**
@@ -1269,6 +1374,8 @@ app.post('/api/categories', requireAdminAuth, (req, res) => {
 
   const label = (cat.label || cat.name).trim();
   const id = cat.id || ('cat-' + label.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-') + '-' + Date.now().toString().slice(-4));
+  unmarkDeletedCategory(id);
+
   const newCat = {
     id,
     label,
@@ -1287,7 +1394,7 @@ app.post('/api/categories', requireAdminAuth, (req, res) => {
   }
 
   saveCustomCategories(categories);
-  res.json({ success: true, category: newCat, message: 'Category saved on server' });
+  res.json({ success: true, category: newCat, deletedCategoryIds: getDeletedCategories(), message: 'Category saved on server' });
 });
 
 /**
@@ -1299,7 +1406,8 @@ app.delete('/api/categories/:id', requireAdminAuth, (req, res) => {
   let categories = getCustomCategories();
   categories = categories.filter(c => c.id !== id);
   saveCustomCategories(categories);
-  res.json({ success: true, message: 'Category deleted from server' });
+  recordDeletedCategory(id);
+  res.json({ success: true, message: 'Category deleted from server', deletedId: id, deletedCategoryIds: getDeletedCategories() });
 });
 
 // --- CUSTOMER REVIEWS API ENDPOINTS ---
@@ -1413,7 +1521,8 @@ app.post('/api/reviews', async (req, res) => {
 app.delete('/api/reviews/:id', requireAdminAuth, async (req, res) => {
   const { id } = req.params;
   await db.deleteReview(id);
-  res.json({ success: true, message: 'Review removed successfully.' });
+  const remaining = await db.getReviews();
+  res.json({ success: true, message: 'Review removed successfully.', reviews: remaining });
 });
 
 // --- ORDER EMAIL NOTIFICATION ENDPOINT ---
@@ -1735,7 +1844,8 @@ app.get('/api/orders/status/:orderRef', async (req, res) => {
  */
 app.get('/api/orders', requireAdminAuth, async (req, res) => {
   const orders = await db.getOrders();
-  res.json({ success: true, orders, sqlActive: db.isSqlActive() });
+  const deletedOrderRefs = getDeletedOrders();
+  res.json({ success: true, orders, deletedOrderRefs, sqlActive: db.isSqlActive() });
 });
 
 /**
@@ -1746,6 +1856,13 @@ app.post('/api/orders', async (req, res) => {
   const orderData = req.body;
   if (!orderData || !orderData.orderRef || typeof orderData.orderRef !== 'string') {
     return res.status(400).json({ success: false, message: 'Invalid order reference' });
+  }
+
+  // Prevent resurrection of deleted orders from stale client devices
+  const cleanRef = (orderData.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase();
+  if (isOrderDeleted(cleanRef) || isOrderDeleted(orderData.orderRef)) {
+    console.log(`[ORDER POST IGNORED] Order ${orderData.orderRef} was previously deleted by store owner; resurrection ignored.`);
+    return res.json({ success: true, ignored: true, message: 'Order was previously deleted by store owner' });
   }
 
   // Validate customer information
@@ -2093,10 +2210,11 @@ app.post('/api/orders/:orderRef/status', requireAdminAuth, async (req, res) => {
  */
 app.delete('/api/orders/:orderRef', requireAdminAuth, async (req, res) => {
   const { orderRef } = req.params;
+  recordDeletedOrder(orderRef);
   await db.deleteOrder(orderRef);
   const remainingOrders = await db.getOrders();
   console.log(`[ORDER DELETED] ${orderRef} removed (${remainingOrders.length} remaining)`);
-  res.json({ success: true, message: `Order ${orderRef} removed`, remaining: remainingOrders.length });
+  res.json({ success: true, message: `Order ${orderRef} removed`, remaining: remainingOrders.length, deletedOrderRefs: getDeletedOrders() });
 });
 
 /**

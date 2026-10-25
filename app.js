@@ -1693,6 +1693,22 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
       }).catch(e => console.warn("[ORDER NOTIFICATION] Netlify fallback:", e));
     });
 
+    // DISPATCH BUYER ORDER & PAYMENT RECEIVED CONFIRMATION EMAIL (Immediate client-side relay to Netlify)
+    if (orderData.customer && orderData.customer.email && orderData.customer.email.includes("@")) {
+      const netlifyCustomerUrl = "https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email";
+      fetch(netlifyCustomerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "order_received",
+          orderData: { ...orderData, type: "order_received" }
+        })
+      })
+      .then(r => r.json())
+      .then(d => console.log("[BUYER EMAIL] Order received confirmation delivered to buyer:", d))
+      .catch(e => console.warn("[BUYER EMAIL] Direct dispatch warn:", e.message));
+    }
+
     // Close Checkout Modal & Open Receipt
     closeCheckoutModal();
     showReceiptModal(orderData, waLink);

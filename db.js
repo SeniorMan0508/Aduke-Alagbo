@@ -420,9 +420,6 @@ async function updateOrderStatus(orderRef, newStatus, note = '') {
       timestamp: new Date().toISOString(),
       note: note || `Status changed to ${newStatus}`
     });
-    if (newStatus === 'verified') {
-      order.paymentConfirmedEmailSent = true;
-    }
     saveStoredOrdersToFile(orders);
   }
 
@@ -443,18 +440,14 @@ async function updateOrderStatus(orderRef, newStatus, note = '') {
           timestamp: new Date().toISOString(),
           note: note || `Status changed to ${newStatus}`
         });
-        if (newStatus === 'verified') {
-          sqlOrder.paymentConfirmedEmailSent = true;
-        }
 
         await pool.query(
           `UPDATE aduke_orders SET
             status = $1,
-            payment_confirmed_email_sent = payment_confirmed_email_sent OR $2,
-            order_data = $3,
+            order_data = $2,
             updated_at = NOW()
-           WHERE LOWER(TRIM(LEADING '#' FROM order_ref)) = $4`,
-          [newStatus, newStatus === 'verified', JSON.stringify(sqlOrder), targetClean]
+           WHERE LOWER(TRIM(LEADING '#' FROM order_ref)) = $3`,
+          [newStatus, JSON.stringify(sqlOrder), targetClean]
         );
       }
     } catch (err) {

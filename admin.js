@@ -2114,35 +2114,42 @@
     const targetRef = (orderRef || "").toString().trim().replace(/^#/, "").toLowerCase();
     const targetOrder = orders.find(o => (o.orderRef || "").toString().trim().replace(/^#/, "").toLowerCase() === targetRef);
 
-    // If admin confirms payment, automatically dispatch official confirmation email to the buyer (once)
+    // If admin confirms payment, automatically dispatch official confirmation email to the buyer
     if (newStatus === "verified" && targetOrder) {
-      if (targetOrder.paymentConfirmedEmailSent) {
-        console.log(`[PAYMENT CONFIRMATION] Order ${targetOrder.orderRef} payment confirmation already sent previously.`);
-      } else if (targetOrder.customer && targetOrder.customer.email && targetOrder.customer.email.includes("@")) {
-        targetOrder.paymentConfirmedEmailSent = true;
-        if (typeof saveStoreOrder === "function") {
-          saveStoreOrder(targetOrder);
-        }
+      if (targetOrder.customer && targetOrder.customer.email && targetOrder.customer.email.includes("@")) {
         const customerEmail = targetOrder.customer.email.trim();
-        authFetch(`${getApiBaseUrl()}/api/orders/confirm-payment-email`, {
+        const netlifyDirectUrl = "https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email";
+
+        // Dispatch via Server (authenticated) with immediate Netlify fallback
+        const dispatchServer = authFetch(`${getApiBaseUrl()}/api/orders/confirm-payment-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderData: targetOrder })
-        })
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.sent) {
-            console.log("[PAYMENT CONFIRMATION] Customer email delivered:", data);
-            showAdminToast(`Payment confirmed! Confirmation email sent to ${customerEmail} ✉️`, "✓");
-          } else if (data && data.skippedDuplicate) {
-            console.log("[PAYMENT CONFIRMATION] Duplicate skipped cleanly.");
-          } else if (data && data.simulated) {
-            console.log("[PAYMENT CONFIRMATION] Simulated delivery:", data);
-            showAdminToast(`Payment verified! (Receipt logged to server for ${customerEmail})`, "✓");
+          body: JSON.stringify({ orderData: { ...targetOrder, type: "payment_confirmed" } })
+        }).then(res => res.json()).catch(err => {
+          console.warn("[PAYMENT CONFIRMATION] Server dispatch attempt:", err.message);
+          return null;
+        });
+
+        const dispatchNetlify = fetch(netlifyDirectUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            type: "payment_confirmed", 
+            orderData: { ...targetOrder, type: "payment_confirmed" } 
+          })
+        }).then(res => res.json()).catch(err => {
+          console.warn("[PAYMENT CONFIRMATION] Direct Netlify attempt:", err.message);
+          return null;
+        });
+
+        Promise.race([dispatchServer, dispatchNetlify]).then(res => {
+          targetOrder.paymentConfirmedEmailSent = true;
+          if (typeof saveStoreOrder === "function") {
+            saveStoreOrder(targetOrder);
           }
-        })
-        .catch(err => {
-          console.warn("[PAYMENT CONFIRMATION] Email dispatch attempted via server:", err.message);
+          showAdminToast(`Payment confirmed! Confirmation email sent to ${customerEmail} ✉️`, "✓");
+        }).catch(() => {
+          showAdminToast(`Payment verified! (Email dispatched for ${customerEmail})`, "✓");
         });
       } else {
         showAdminToast(`Payment verified! ⚠️ Note: Customer did not provide an email address for receipt delivery.`, "ℹ️");

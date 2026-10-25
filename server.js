@@ -2248,6 +2248,9 @@ async function sendCustomerPaymentConfirmationEmail(orderData, forcedStatus = nu
       </div>
 
       <div style="background: #f1f5f9; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="font-size: 11px; color: #64748b; margin: 0 0 6px 0;">
+          📬 <strong>Tip:</strong> If this email arrived in your Spam or Junk folder, tap <strong>"Report Not Spam"</strong> or add our email to your contacts so all future delivery notifications land in your Primary Inbox!
+        </p>
         <p style="font-size: 11px; color: #94a3b8; margin: 0;">
           Aduke Alagbo • 100% Wildcrafted Ancestral Botanicals • Abeokuta, Ogun State, Nigeria
         </p>

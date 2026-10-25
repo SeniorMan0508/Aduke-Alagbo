@@ -1732,6 +1732,48 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     const waBox = document.getElementById("receiptWhatsAppPromptBox");
 
     function renderReceiptStatus(status) {
+      if (status === "cancelled") {
+        if (statusEl) {
+          statusEl.textContent = "❌ Order Cancelled (No Payment Received)";
+          statusEl.style.color = "#dc2626";
+          statusEl.style.fontWeight = "800";
+        }
+        if (iconEl) {
+          iconEl.textContent = "❌";
+          iconEl.style.background = "#fee2e2";
+          iconEl.style.color = "#dc2626";
+          iconEl.style.borderColor = "#fca5a5";
+          iconEl.style.boxShadow = "none";
+        }
+        if (titleEl) {
+          titleEl.textContent = "Order Cancelled ❌";
+          titleEl.style.color = "#991b1b";
+        }
+        if (descEl) {
+          descEl.innerHTML = `
+            <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px; margin: 10px 0; text-align: left;">
+              <p style="margin: 0 0 6px 0; color: #dc2626; font-weight: 800; font-size: 0.96rem;">
+                ✕ Order Cancelled — No Payment Received
+              </p>
+              <p style="margin: 0 0 8px 0; color: #7f1d1d; font-size: 0.88rem; line-height: 1.5;">
+                We could not verify a matching bank transfer payment alert for order <strong>${order.orderRef}</strong>. Kindly check your bank app and place your order again.
+              </p>
+              <p style="margin: 0; color: #991b1b; font-size: 0.82rem; line-height: 1.4;">
+                If you already sent payment, please contact Aduke Alagbo directly on WhatsApp (+234 905 512 6388) with your transfer receipt!
+              </p>
+            </div>
+          `;
+        }
+        if (bankBox) {
+          bankBox.innerHTML = `
+            <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 12px; text-align: center; color: #dc2626; font-weight: 700; font-size: 0.88rem;">
+              ✕ No Payment Received • Order Cancelled
+            </div>
+          `;
+        }
+        return true;
+      }
+
       if (status === "verified" || status === "dispatched" || status === "delivered") {
         if (statusEl) {
           statusEl.textContent = "🟢 Payment Confirmed & Verified (Success) ✓";
@@ -1758,6 +1800,12 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
               <p style="margin: 0 0 8px 0; color: #166534; font-size: 0.88rem; line-height: 1.5;">
                 An official confirmation receipt has been sent to your email (<strong>${order.customer.email || 'your email'}</strong>).
               </p>
+              <div style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; font-size: 0.82rem; color: #92400e; display: flex; align-items: flex-start; gap: 6px; line-height: 1.4;">
+                <span style="font-size: 1rem; flex-shrink: 0;">📬</span>
+                <div>
+                  <strong>Can't find the email in your inbox?</strong> Please check your <strong>Spam / Junk folder</strong> and tap <strong>"Report Not Spam"</strong> so future dispatch notifications reach your primary inbox!
+                </div>
+              </div>
               <p style="margin: 0; color: #475569; font-size: 0.82rem; line-height: 1.4;">
                 🌿 Your authentic herbal remedies are now being freshly prepared and packaged for dispatch. Our delivery rider will contact you on <strong>${order.customer.phone}</strong> before arrival!
               </p>
@@ -1816,6 +1864,31 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
           if (descEl) {
             descEl.innerHTML = "Your order has been registered! <strong>Aduke Alagbo will verify the payment alert in her bank account. As soon as she confirms, your status automatically updates to Success here and you'll receive a confirmation email!</strong>";
           }
+        }
+
+        if (bankBox) {
+          bankBox.innerHTML = `
+            <div style="display: flex; align-items: flex-start; gap: 0.65rem; line-height: 1.45;">
+              <span style="font-size: 1.3rem; flex-shrink: 0;">✅</span>
+              <div>
+                <strong style="color: #1b5e20; font-size: 0.92rem;">Order Confirmed & Recorded!</strong>
+                <p style="margin: 0.35rem 0 0 0; color: #2e7d32; font-size: 0.83rem;">
+                  Aduke Alagbo will verify the payment alert in her Kuda bank account and dispatch your package immediately to your address. You do not need to do anything further!
+                </p>
+              </div>
+            </div>
+            <div class="receipt-spam-notice" style="background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 8px; padding: 0.8rem 0.95rem; margin-top: 0.85rem; font-size: 0.83rem; color: #92400e; display: flex; align-items: flex-start; gap: 0.65rem; line-height: 1.45;">
+              <span style="font-size: 1.3rem; flex-shrink: 0; line-height: 1;">📬</span>
+              <div>
+                <strong style="color: #78350f; font-size: 0.88rem; display: block; margin-bottom: 0.25rem;">
+                  ⚠️ In case you don't receive your email: Check your Spam / Junk folder!
+                </strong>
+                <p style="margin: 0; color: #92400e; font-size: 0.82rem; line-height: 1.45;">
+                  Once Aduke Alagbo confirms your payment, your official receipt will be sent to your email. <strong>If you don't see it in your Inbox, please check your Spam or Junk folder</strong> (first-time emails from our store may be filtered there). Tap <strong>"Report Not Spam"</strong> or move it to your Inbox so you receive all delivery rider updates!
+                </p>
+              </div>
+            </div>
+          `;
         }
       } else {
         if (statusEl) {
@@ -1930,7 +2003,7 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
         if (typeof getStoreOrders === "function") {
           const localOrders = getStoreOrders();
           const found = localOrders.find(o => (o.orderRef || '').toString().trim().replace(/^#/, '').toLowerCase() === targetClean);
-          if (found && (found.status === "verified" || found.status === "dispatched" || found.status === "delivered")) {
+          if (found && (found.status === "verified" || found.status === "dispatched" || found.status === "delivered" || found.status === "cancelled")) {
             verifiedStatus = found.status;
           }
         }
@@ -1941,7 +2014,7 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
             const res = await fetch(`${getApiBaseUrl()}/api/orders/status/${encodeURIComponent(targetClean)}`);
             if (res.ok) {
               const data = await res.json();
-              if (data && data.success && (data.status === "verified" || data.status === "dispatched" || data.status === "delivered")) {
+              if (data && data.success && (data.status === "verified" || data.status === "dispatched" || data.status === "delivered" || data.status === "cancelled")) {
                 verifiedStatus = data.status;
               }
             }
@@ -1951,7 +2024,11 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
         if (verifiedStatus) {
           order.status = verifiedStatus;
           renderReceiptStatus(verifiedStatus);
-          showToast(`🎉 Payment Confirmed! Aduke Alagbo verified your alert.`, "✓");
+          if (verifiedStatus === "cancelled") {
+            showToast(`Order Cancelled: No payment alert was received.`, "✕");
+          } else {
+            showToast(`🎉 Payment Confirmed! Aduke Alagbo verified your alert.`, "✓");
+          }
           if (state.receiptStatusWatcher) {
             clearInterval(state.receiptStatusWatcher);
             state.receiptStatusWatcher = null;
@@ -1963,10 +2040,14 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
       const onStatusUpdated = (e) => {
         const updatedRef = (e.detail && e.detail.orderRef ? e.detail.orderRef : '').toString().trim().replace(/^#/, '').toLowerCase();
         if (updatedRef === targetClean) {
-          if (e.detail.newStatus === "verified" || e.detail.newStatus === "dispatched" || e.detail.newStatus === "delivered") {
+          if (e.detail.newStatus === "verified" || e.detail.newStatus === "dispatched" || e.detail.newStatus === "delivered" || e.detail.newStatus === "cancelled") {
             order.status = e.detail.newStatus;
             renderReceiptStatus(e.detail.newStatus);
-            showToast(`🎉 Payment Confirmed! Aduke Alagbo verified your alert.`, "✓");
+            if (e.detail.newStatus === "cancelled") {
+              showToast(`Order Cancelled: No payment alert was received.`, "✕");
+            } else {
+              showToast(`🎉 Payment Confirmed! Aduke Alagbo verified your alert.`, "✓");
+            }
             if (state.receiptStatusWatcher) {
               clearInterval(state.receiptStatusWatcher);
               state.receiptStatusWatcher = null;

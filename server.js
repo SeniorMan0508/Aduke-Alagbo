@@ -869,28 +869,17 @@ async function sendOrderNotificationEmail(orderData) {
 
   console.log(`[ORDER DISPATCH] Sending admin order alert for order ${orderData.orderRef}...`);
   console.log(`[ORDER DISPATCH] Store Owner: ${ownerEmail}`);
+  console.log(`[ORDER DISPATCH] (Customer email strictly withheld until admin confirms status in dashboard)`);
   const ownerResult = await sendOwnerOrderAlert(orderData, ownerEmail);
   const ownerSent = Boolean(ownerResult && ownerResult.sent);
 
-  // Also dispatch order received confirmation email to buyer if email is provided
-  let customerResult = { sent: false };
-  if (orderData.customer && orderData.customer.email && orderData.customer.email.includes('@')) {
-    try {
-      customerResult = await sendCustomerPaymentConfirmationEmail({ ...orderData, status: 'order_received' }, 'order_received');
-      console.log(`[ORDER DISPATCH] Buyer Order Received email -> ${orderData.customer.email}: ${customerResult.sent ? 'DELIVERED ✓' : 'FAILED ✗'}`);
-    } catch (err) {
-      console.warn(`[ORDER DISPATCH] Buyer email error:`, err.message);
-    }
-  }
-
-  console.log(`[ORDER DISPATCH RESULT] ${orderData.orderRef} -> Owner Alert: ${ownerSent ? 'DELIVERED ✓' : 'FAILED ✗'}, Buyer Email: ${customerResult.sent ? 'DELIVERED ✓' : 'FAILED ✗'}`);
+  console.log(`[ORDER DISPATCH RESULT] ${orderData.orderRef} -> Owner Alert: ${ownerSent ? 'DELIVERED ✓' : 'FAILED ✗'}, Buyer Email: WITHHELD_UNTIL_ADMIN_ACTION`);
 
   return {
-    sent: ownerSent || Boolean(customerResult.sent),
+    sent: ownerSent,
     ownerEmailSent: ownerSent,
-    customerEmailSent: Boolean(customerResult.sent),
-    ownerResult,
-    customerResult
+    customerEmailSent: false,
+    ownerResult
   };
 }
 
@@ -2048,34 +2037,35 @@ async function sendCustomerPaymentConfirmationEmail(orderData, forcedStatus = nu
   let noticeBoxHtml = '';
 
   if (isCancelled) {
-    emailSubject = `❌ Order Cancelled: Aduke Alagbo Order (${orderData.orderRef})`;
+    emailSubject = `❌ Order Cancelled: No Payment Received (${orderData.orderRef}) - Aduke Alagbo`;
     bannerHtml = `
       <div style="background: #fef2f2; border-bottom: 2px solid #f87171; padding: 22px 24px; text-align: center;">
         <div style="display: inline-block; background: #dc2626; color: #ffffff; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; font-size: 20px; font-weight: bold; margin-bottom: 8px;">✕</div>
-        <h2 style="margin: 0; font-size: 19px; color: #991b1b; font-weight: 800; letter-spacing: 0.02em;">ORDER CANCELLED</h2>
+        <h2 style="margin: 0; font-size: 19px; color: #991b1b; font-weight: 800; letter-spacing: 0.02em;">ORDER CANCELLED — NO PAYMENT RECEIVED</h2>
         <p style="margin: 5px 0 0 0; font-size: 13px; color: #b91c1c;">Notice regarding order reference ${escapeHtml(orderData.orderRef)}</p>
       </div>
     `;
     messageHtml = `
       <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
       <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-        Please be informed that your order <strong>${escapeHtml(orderData.orderRef)}</strong> has been <strong>cancelled</strong> by store administration and will not be prepared or shipped.
+        Please be informed that your order <strong>${escapeHtml(orderData.orderRef)}</strong> has been <strong>cancelled</strong> because no payment was received for this transaction.
       </p>
-      <div style="background: #fff1f2; border-left: 4px solid #e11d48; padding: 12px 16px; border-radius: 6px; margin: 16px 0;">
-        <div style="font-size: 12px; font-weight: 700; color: #9f1239; text-transform: uppercase;">Reason / Administrative Note</div>
-        <div style="font-size: 14px; color: #881337; margin-top: 4px;">
-          ${note ? escapeHtml(note) : 'Payment was not received / confirmed within the payment window.'}
+      <div style="background: #fff1f2; border-left: 4px solid #e11d48; padding: 14px 18px; border-radius: 6px; margin: 16px 0;">
+        <div style="font-size: 13px; font-weight: 700; color: #9f1239; margin-bottom: 4px;">⚠️ What You Should Do:</div>
+        <div style="font-size: 14px; color: #881337; line-height: 1.5;">
+          <strong>Kindly check your bank account or banking app to confirm if the transfer went through, and try placing your order again.</strong>
+          ${note ? `<br><br><strong>Admin Note:</strong> ${escapeHtml(note)}` : ''}
         </div>
       </div>
       <p style="color: #475569; font-size: 13px; line-height: 1.6;">
-        <strong>Did you already transfer?</strong> If you already made a payment for this order, please message Aduke Alagbo immediately on WhatsApp with your transfer receipt so we can trace your payment and reinstate your order right away!
+        <strong>Did your bank debit your account?</strong> If money was deducted, please message Aduke Alagbo immediately on WhatsApp with your transfer receipt or bank session ID so we can verify the credit and reinstate your order right away.
       </p>
     `;
-    badgeHtml = `<span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Cancelled ❌</span>`;
+    badgeHtml = `<span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Cancelled (No Payment) ❌</span>`;
     totalsBottomHtml = `
       <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #991b1b;">
         <span>Order Status:</span>
-        <span style="color: #dc2626;">Cancelled (Not Paid) ❌</span>
+        <span style="color: #dc2626;">Cancelled (No Payment Received) ❌</span>
       </div>
     `;
     noticeBoxHtml = `

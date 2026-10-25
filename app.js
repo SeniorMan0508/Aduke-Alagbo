@@ -1696,23 +1696,6 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
       }).catch(e => console.warn("[ORDER NOTIFICATION] Netlify fallback:", e));
     });
 
-    // DISPATCH BUYER ORDER & PAYMENT RECEIVED CONFIRMATION EMAIL
-    if (orderData.customer && orderData.customer.email && orderData.customer.email.includes("@")) {
-      const netlifyCustomerUrl = `${netlifyRelayBase}/.netlify/functions/customer-payment-confirmed-email`;
-      fetch(netlifyCustomerUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "order_received",
-          type: "order_received",
-          orderData: { ...orderData, status: "order_received" }
-        })
-      })
-      .then(res => res.json())
-      .then(d => console.log("[BUYER EMAIL] Receipt email sent to buyer:", d))
-      .catch(e => console.warn("[BUYER EMAIL] Receipt email failed:", e));
-    }
-
     // Close Checkout Modal & Open Receipt
     closeCheckoutModal();
     showReceiptModal(orderData, waLink);

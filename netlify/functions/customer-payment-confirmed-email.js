@@ -100,7 +100,6 @@ exports.handler = async (event, context) => {
   const isCancelled = ['cancelled', 'canceled', 'cancel'].includes(status);
   const isDispatched = ['dispatched', 'dispatch', 'in_transit', 'intransit'].includes(status);
   const isDelivered = ['delivered', 'deliver', 'completed'].includes(status);
-  const isOrderReceived = ['order_received', 'received', 'pending', 'order_placed', 'checkout'].includes(status);
 
   const deliveryNote = orderData.shippingMethod === 'nationwide'
     ? 'Interstate Courier (Sorted with dispatch rider)'
@@ -114,34 +113,35 @@ exports.handler = async (event, context) => {
   let noticeBoxHtml = '';
 
   if (isCancelled) {
-    emailSubject = `❌ Order Cancelled: Aduke Alagbo Order (${orderRef})`;
+    emailSubject = `❌ Order Cancelled: No Payment Received (${orderRef}) - Aduke Alagbo`;
     bannerHtml = `
       <div style="background: #fef2f2; border-bottom: 2px solid #f87171; padding: 22px 24px; text-align: center;">
         <div style="display: inline-block; background: #dc2626; color: #ffffff; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; font-size: 20px; font-weight: bold; margin-bottom: 8px;">✕</div>
-        <h2 style="margin: 0; font-size: 19px; color: #991b1b; font-weight: 800; letter-spacing: 0.02em;">ORDER CANCELLED</h2>
+        <h2 style="margin: 0; font-size: 19px; color: #991b1b; font-weight: 800; letter-spacing: 0.02em;">ORDER CANCELLED — NO PAYMENT RECEIVED</h2>
         <p style="margin: 5px 0 0 0; font-size: 13px; color: #b91c1c;">Notice regarding order reference ${orderRef}</p>
       </div>
     `;
     messageHtml = `
       <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
       <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-        Please be informed that your order <strong>${orderRef}</strong> has been <strong>cancelled</strong> by store administration and will not be prepared or shipped.
+        Please be informed that your order <strong>${orderRef}</strong> has been <strong>cancelled</strong> because no payment was received for this transaction.
       </p>
-      <div style="background: #fff1f2; border-left: 4px solid #e11d48; padding: 12px 16px; border-radius: 6px; margin: 16px 0;">
-        <div style="font-size: 12px; font-weight: 700; color: #9f1239; text-transform: uppercase;">Reason / Administrative Note</div>
-        <div style="font-size: 14px; color: #881337; margin-top: 4px;">
-          ${note ? escapeHtml(note) : 'Payment was not received / confirmed within the payment window.'}
+      <div style="background: #fff1f2; border-left: 4px solid #e11d48; padding: 14px 18px; border-radius: 6px; margin: 16px 0;">
+        <div style="font-size: 13px; font-weight: 700; color: #9f1239; margin-bottom: 4px;">⚠️ What You Should Do:</div>
+        <div style="font-size: 14px; color: #881337; line-height: 1.5;">
+          <strong>Kindly check your bank account or banking app to confirm if the transfer went through, and try placing your order again.</strong>
+          ${note ? `<br><br><strong>Admin Note:</strong> ${escapeHtml(note)}` : ''}
         </div>
       </div>
       <p style="color: #475569; font-size: 13px; line-height: 1.6;">
-        <strong>Did you already transfer?</strong> If you already made a payment for this order, please message Aduke Alagbo immediately on WhatsApp with your transfer receipt so we can trace your payment and reinstate your order right away!
+        <strong>Did your bank debit your account?</strong> If money was deducted, please message Aduke Alagbo immediately on WhatsApp with your transfer receipt or bank session ID so we can verify the credit and reinstate your order right away.
       </p>
     `;
-    badgeHtml = `<span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Cancelled ❌</span>`;
+    badgeHtml = `<span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Cancelled (No Payment) ❌</span>`;
     totalsBottomHtml = `
       <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #991b1b;">
         <span>Order Status:</span>
-        <span style="color: #dc2626;">Cancelled (Not Paid) ❌</span>
+        <span style="color: #dc2626;">Cancelled (No Payment Received) ❌</span>
       </div>
     `;
     noticeBoxHtml = `
@@ -210,38 +210,6 @@ exports.handler = async (event, context) => {
         <div style="font-size: 13px; color: #166534; line-height: 1.5;">
           🌿 <strong>Dosage &amp; Care Guidance:</strong> Shake all herbal liquid preparations gently before drinking. Store in a cool, shaded environment (or refrigerate where indicated). If you need any advice on your dosage schedule, message Aduke Alagbo directly on WhatsApp at 
           <a href="https://wa.me/2349055126388" style="color: #166534; font-weight: 800; text-decoration: underline;">+234 905 512 6388</a>.
-        </div>
-      </div>
-    `;
-  } else if (isOrderReceived) {
-    // Order Received (Buyer Checkout Receipt)
-    emailSubject = `🧾 Order & Payment Proof Received: Aduke Alagbo Order (${orderRef})`;
-    bannerHtml = `
-      <div style="background: #fefce8; border-bottom: 2px solid #fef08a; padding: 22px 24px; text-align: center;">
-        <div style="display: inline-block; background: #eab308; color: #ffffff; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; font-size: 20px; font-weight: bold; margin-bottom: 8px;">🧾</div>
-        <h2 style="margin: 0; font-size: 19px; color: #854d0e; font-weight: 800; letter-spacing: 0.02em;">ORDER &amp; PAYMENT PROOF RECEIVED</h2>
-        <p style="margin: 5px 0 0 0; font-size: 13px; color: #a16207;">Thank you! Your order has been placed and payment proof received.</p>
-      </div>
-    `;
-    messageHtml = `
-      <p style="color: #1e293b; font-size: 15px; margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
-      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-        Thank you for shopping with <strong>Aduke Alagbo</strong>! We have successfully received your order <strong>${orderRef}</strong> and payment proof for <strong>₦${finalTotal.toLocaleString('en-NG')}</strong>.
-        Our team is verifying your bank transfer alert. Once verified, you will receive an official payment confirmation and dispatch tracking update!
-      </p>
-    `;
-    badgeHtml = `<span style="background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;">Awaiting Verification ⏳</span>`;
-    totalsBottomHtml = `
-      <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #854d0e;">
-        <span>Payment Status:</span>
-        <span style="color: #a16207;">Proof Received (Awaiting Verification) ⏳</span>
-      </div>
-    `;
-    noticeBoxHtml = `
-      <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
-        <div style="font-size: 13px; color: #92400e; line-height: 1.5;">
-          🌿 <strong>What Happens Next:</strong> We will cross-check your bank transfer alert and begin freshly preparing your natural herbal remedies. If you have any urgent inquiry or need to share receipt screenshot, message Aduke Alagbo directly on WhatsApp at 
-          <a href="https://wa.me/2349055126388" style="color: #854d0e; font-weight: 800; text-decoration: underline;">+234 905 512 6388</a>.
         </div>
       </div>
     `;

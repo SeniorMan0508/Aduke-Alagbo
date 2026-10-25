@@ -422,13 +422,16 @@
 
       // 2. Try Netlify Serverless Function if backend was not reachable
       if (!emailDelivered) {
-        try {
-          const netlifyRes = await fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/send-reset-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ toEmail: OWNER_EMAIL, code: fallbackCode })
-          });
-          const netlifyData = await netlifyRes.json();
+          const resetUrl = window.location.protocol.startsWith("http") && !window.location.hostname.includes("localhost") 
+            ? `${window.location.origin}/.netlify/functions/send-reset-email` 
+            : null;
+          if (resetUrl) {
+            const netlifyRes = await fetch(resetUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ toEmail: OWNER_EMAIL, code: fallbackCode })
+            });
+            const netlifyData = await netlifyRes.json();
           if (netlifyRes.ok && netlifyData.success) {
             emailDelivered = true;
             deliveredMsg = `✅ 6-digit verification code sent to ${OWNER_EMAIL}! Please check your inbox and Spam folder.`;
@@ -2121,15 +2124,13 @@
     if (customerNotificationStatuses.includes(normalizedStatus) && targetOrder) {
       if (targetOrder.customer && targetOrder.customer.email && targetOrder.customer.email.includes("@")) {
         const customerEmail = targetOrder.customer.email.trim();
-        const netlifyDirectUrl = "https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email";
-
         const emailPayload = {
           status: normalizedStatus,
           note: note || "",
           orderData: { ...targetOrder, status: normalizedStatus, note: note || "" }
         };
 
-        // Dispatch via Server (authenticated) with immediate Netlify fallback
+        // Dispatch via Aduke Alagbo Backend Server (authenticated)
         const dispatchServer = authFetch(`${getApiBaseUrl()}/api/orders/confirm-payment-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2139,29 +2140,15 @@
           return null;
         });
 
-        const dispatchNetlify = fetch(netlifyDirectUrl, {
+        // Same-origin serverless fallback (only if hosted on serverless domain with functions)
+        const sameOriginNetlifyUrl = (typeof window !== "undefined" && window.location.protocol.startsWith("http") && !window.location.hostname.includes("localhost")) 
+          ? `${window.location.origin}/.netlify/functions/customer-payment-confirmed-email` 
+          : null;
+        const dispatchNetlify = sameOriginNetlifyUrl ? fetch(sameOriginNetlifyUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(emailPayload)
-        }).then(res => {
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          return res.json();
-        }).catch(err => {
-          console.warn(`[ORDER EMAIL] Primary Netlify attempt (${normalizedStatus}) failed, trying fallback relay:`, err.message);
-          return fetch("https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "customer_payment_confirmed",
-              status: normalizedStatus,
-              note: note || "",
-              orderData: { ...targetOrder, status: normalizedStatus, note: note || "" }
-            })
-          }).then(res => res.json()).catch(fallbackErr => {
-            console.warn(`[ORDER EMAIL] Fallback relay also failed:`, fallbackErr.message);
-            return null;
-          });
-        });
+        }).then(res => res.ok ? res.json() : null).catch(() => null) : Promise.resolve(null);
 
         const friendlyMessages = {
           verified: `Payment confirmed! Confirmation email sent to ${customerEmail} ✉️`,

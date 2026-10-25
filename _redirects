@@ -4,7 +4,7 @@
 /api/auth/send-reset-email           /.netlify/functions/send-reset-email                200
 
 # Proxy all other API requests (admin auth, products, reviews) to Render backend
-/api/*  https://quad-ace-herbs.onrender.com/api/:splat  200!
+/api/*  https://aduke-alagbo.onrender.com/api/:splat  200!
 
 # Clean frontend routes
 /shop   /shop.html   200

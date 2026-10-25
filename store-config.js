@@ -8,7 +8,7 @@
 const STORE_CONFIG = {
   // Brand Information
   storeName: "Aduke Alagbo",
-  backendUrl: "", // Relative path automatically routes to the active host
+  backendUrl: "https://aduke-alagbo.onrender.com",
   logoImage: "images/aduke-alagbo-logo.jpeg",
   tagline: "Authentic Ancestral Remedies • 100% Wildcrafted African Botanicals",
   established: "2018",

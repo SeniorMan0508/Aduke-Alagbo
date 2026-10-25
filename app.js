@@ -1629,7 +1629,7 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
     async function syncOrderToBackend(order) {
       const endpoints = [
         `${getApiBaseUrl()}/api/orders`,
-        "https://quad-ace-herbs.onrender.com/api/orders"
+        "https://aduke-alagbo.onrender.com/api/orders"
       ].filter((u, i, arr) => u && arr.indexOf(u) === i);
 
       for (let attempt = 1; attempt <= 3; attempt++) {
@@ -1665,7 +1665,9 @@ Please verify the payment alert and confirm dispatch! Thank you for choosing Adu
 
     // DISPATCH NEW ORDER NOTIFICATION EMAIL TO STORE OWNER
     const emailEndpoint = `${getApiBaseUrl()}/api/orders/notify-email`;
-    const netlifyDirectUrl = "https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email";
+    const netlifyDirectUrl = (typeof window !== "undefined" && window.location.protocol.startsWith("http") && !window.location.hostname.includes("localhost")) 
+      ? `${window.location.origin}/.netlify/functions/notify-email` 
+      : null;
 
     fetch(emailEndpoint, {
       method: "POST",

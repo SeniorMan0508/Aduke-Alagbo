@@ -73,7 +73,7 @@ exports.handler = async (event, context) => {
   // Cloud-to-cloud redundant sync to Render backend so order is guaranteed to be saved in admin database
   if (!isCustomerConfirmation) {
     try {
-      fetch('https://quad-ace-herbs.onrender.com/api/orders', {
+      fetch('https://aduke-alagbo.onrender.com/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...orderData, isSync: true, skipEmail: true })

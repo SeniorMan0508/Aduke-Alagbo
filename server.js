@@ -508,7 +508,8 @@ let lastCodeSentTimestamp = 0;
  * (bypasses cloud host SMTP port blocking on Render)
  */
 async function sendViaNetlifyFunction(toEmail, code) {
-  const netlifyUrl = 'https://quad-ace-herbs.netlify.app/.netlify/functions/send-reset-email';
+  const netlifyUrl = process.env.NETLIFY_RESET_URL || null;
+  if (!netlifyUrl) return { sent: false };
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12000);
@@ -533,12 +534,9 @@ async function sendViaNetlifyFunction(toEmail, code) {
   }
 }
 
-/**
- * Dispatches order notifications via HTTPS Netlify Serverless Relay
- * (Bypasses Render's firewall block on SMTP ports 25, 465, and 587)
- */
 async function sendOrderViaNetlifyRelay(orderData, isCustomer = false) {
-  const netlifyUrl = 'https://quad-ace-herbs.netlify.app/.netlify/functions/notify-email';
+  const netlifyUrl = process.env.NETLIFY_ORDER_RELAY_URL || null;
+  if (!netlifyUrl) return { sent: false };
   try {
     const payload = {
       ...orderData,
@@ -1970,29 +1968,31 @@ async function sendCustomerPaymentConfirmationEmail(orderData, forcedStatus = nu
 
   const customerEmail = orderData.customer.email.trim();
 
-  // 1. Prioritize Netlify HTTPS relay (bypasses Render SMTP port blocking)
-  try {
-    const netlifyUrl = 'https://quad-ace-herbs.netlify.app/.netlify/functions/customer-payment-confirmed-email';
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    const relayRes = await fetch(netlifyUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        orderData: { ...orderData, status },
-        status,
-        note
-      }),
-      signal: controller.signal
-    });
-    clearTimeout(timer);
-    const relayData = await relayRes.json();
-    if (relayRes.ok && relayData.success) {
-      console.log(`[CUSTOMER STATUS EMAIL] Delivered (${status}) to ${customerEmail} via Netlify HTTPS relay`);
-      return { sent: true, method: 'netlify_https_relay', status };
+  // 1. Optional custom relay if configured in environment
+  const customRelayUrl = process.env.NETLIFY_STATUS_RELAY_URL || null;
+  if (customRelayUrl) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const relayRes = await fetch(customRelayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          orderData: { ...orderData, status },
+          status,
+          note
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      const relayData = await relayRes.json();
+      if (relayRes.ok && relayData.success) {
+        console.log(`[CUSTOMER STATUS EMAIL] Delivered (${status}) to ${customerEmail} via custom relay`);
+        return { sent: true, method: 'custom_relay', status };
+      }
+    } catch (err) {
+      console.warn(`[CUSTOMER STATUS EMAIL] Custom relay attempt:`, err.message);
     }
-  } catch (err) {
-    console.warn(`[CUSTOMER STATUS EMAIL] Netlify relay attempt:`, err.message);
   }
 
   const LOGO_PATH = path.join(__dirname, 'images', 'aduke-alagbo-logo.jpeg');
